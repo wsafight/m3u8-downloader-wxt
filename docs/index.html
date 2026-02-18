@@ -459,6 +459,16 @@
       <div class="feature-title">低内存合并 & 持久设置</div>
       <div class="feature-desc">每 100 段批次合并 Blob 并释放 ArrayBuffer，避免 OOM；并发线程数通过 storage.sync 跨会话保存。</div>
     </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔁</div>
+      <div class="feature-title">自动重试</div>
+      <div class="feature-desc">分片请求失败后自动按指数退避策略重试，网络抖动或临时限速时无需手动干预，大幅提升下载完成率。</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🍪</div>
+      <div class="feature-title">请求头自动透传</div>
+      <div class="feature-desc">下载时自动携带当前页面的 Cookie 与 Referer，无需手动配置即可绕过鉴权校验，适配需要登录的流媒体站点。</div>
+    </div>
   </div>
 </section>
 
