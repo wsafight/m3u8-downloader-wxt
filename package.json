@@ -1,0 +1,23 @@
+{
+  "name": "m3u8-stream-downloader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "wxt": "^0.20.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}
