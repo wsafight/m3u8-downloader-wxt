@@ -190,7 +190,7 @@
   <header>
     <div class="logo">
       <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
-        <rect width="32" height="32" rx="8" fill="url(#lg)" />
+        <rect width="32" height="32" rx="8" fill="#2563eb" />
         <path
           d="M10 22V10l6 5 6-5v12"
           stroke="#fff"
@@ -198,12 +198,6 @@
           stroke-linejoin="round"
           stroke-linecap="round"
         />
-        <defs>
-          <linearGradient id="lg" x1="0" y1="0" x2="32" y2="32">
-            <stop offset="0%" stop-color="#5b9df6" />
-            <stop offset="100%" stop-color="#22d3ee" />
-          </linearGradient>
-        </defs>
       </svg>
       <span class="logo-text">M3U8 <em>Downloader</em></span>
     </div>
@@ -486,7 +480,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 14px;
-    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    background: var(--bg);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -509,9 +503,7 @@
   }
   .logo-text em {
     font-style: normal;
-    background: var(--accent-grad);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--accent);
   }
 
   .icon-btn {
@@ -587,10 +579,10 @@
     height: 16px;
     padding: 0 4px;
     border-radius: 8px;
-    background: var(--accent-grad);
+    background: var(--accent);
     color: #fff;
     font-size: 9px;
-    font-weight: 700;
+    font-weight: 600;
   }
 
   /* ── Main content ── */
@@ -652,18 +644,17 @@
     gap: 0;
     padding: 10px 12px;
     border-radius: var(--radius);
-    background: var(--surface-2);
+    background: var(--bg);
     border: 1px solid var(--border);
     animation: fadeSlideIn 0.25s ease both;
+    box-shadow: var(--shadow-sm);
     transition:
       border-color var(--transition),
-      background var(--transition),
       box-shadow var(--transition);
   }
   .stream-card:hover {
-    background: var(--surface-3);
     border-color: var(--border-hi);
-    box-shadow: 0 0 0 1px var(--accent-glow);
+    box-shadow: var(--shadow-md);
   }
 
   .stream-row {
@@ -694,8 +685,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 7px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-hi);
+    background: var(--accent-light);
+    border: 1px solid #bfdbfe;
     color: var(--accent);
   }
   .stream-thumb svg {
@@ -767,28 +758,27 @@
     border: 1px solid transparent;
   }
   .btn-preview:hover {
-    background: #22d3ee15;
+    background: var(--accent-light);
     color: var(--accent);
-    border-color: var(--border-hi);
+    border-color: #bfdbfe;
   }
   .btn-preview.active {
-    background: #22d3ee20;
+    background: var(--accent-light);
     color: var(--accent);
-    border-color: var(--border-hi);
+    border-color: #bfdbfe;
   }
 
   .btn-dl {
-    background: var(--accent-glow);
+    background: var(--accent-light);
     color: var(--accent);
-    border: 1px solid var(--border-hi);
+    border: 1px solid #bfdbfe;
   }
   .btn-dl:hover {
     background: var(--accent);
     color: #fff;
-    transform: translateY(-1px);
   }
   .btn-dl:active {
-    transform: scale(0.92);
+    transform: scale(0.94);
   }
 
   .btn-queue {
@@ -797,9 +787,9 @@
     border: 1px solid transparent;
   }
   .btn-queue:hover {
-    background: #5b9df615;
+    background: var(--surface-2);
     color: var(--accent);
-    border-color: var(--border-hi);
+    border-color: var(--border);
   }
 
   .btn-rm {
@@ -808,12 +798,12 @@
     border: 1px solid transparent;
   }
   .btn-rm:hover {
-    background: #f871711a;
+    background: var(--error-bg);
     color: var(--error);
-    border-color: #f8717130;
+    border-color: #fecaca;
   }
   .btn-rm:active {
-    transform: scale(0.9);
+    transform: scale(0.94);
   }
 
   /* ── Footer ── */
@@ -821,7 +811,7 @@
     display: flex;
     gap: 6px;
     padding: 10px 12px;
-    background: var(--surface);
+    background: var(--bg);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -830,7 +820,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--surface-2);
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0 10px;
@@ -840,7 +830,7 @@
   }
   .input-wrap:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: var(--shadow-glow);
   }
   .input-icon {
     width: 14px;
@@ -867,27 +857,25 @@
     width: 36px;
     height: 36px;
     border-radius: var(--radius);
-    background: var(--accent-grad);
+    background: var(--accent);
     color: #fff;
     flex-shrink: 0;
-    box-shadow: 0 2px 12px #5b9df640;
-    transition:
-      opacity var(--transition),
-      transform 0.1s;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+    transition: background var(--transition), box-shadow var(--transition);
   }
   .btn-go svg {
     width: 16px;
     height: 16px;
   }
   .btn-go:not(:disabled):hover {
-    opacity: 0.85;
-    transform: translateY(-1px);
+    background: var(--accent-2);
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.35);
   }
   .btn-go:not(:disabled):active {
-    transform: scale(0.92);
+    transform: scale(0.94);
   }
   .btn-go:disabled {
-    opacity: 0.35;
+    opacity: 0.4;
     cursor: default;
   }
 
@@ -922,7 +910,7 @@
 
   .stream-card.selected {
     border-color: var(--accent);
-    background: var(--surface-3);
+    background: var(--accent-light);
   }
 
   /* ── Batch bar ── */
@@ -931,7 +919,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: var(--surface-2);
+    background: var(--surface);
     border-top: 1px solid var(--border);
     animation: fadeSlideIn 0.2s ease both;
     flex-shrink: 0;
@@ -943,14 +931,14 @@
   .btn-batch-queue {
     padding: 5px 14px;
     border-radius: var(--radius);
-    background: var(--accent-grad);
+    background: var(--accent);
     color: #fff;
     font-size: 11px;
     font-weight: 600;
-    box-shadow: 0 2px 8px #5b9df630;
-    transition: opacity var(--transition);
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+    transition: background var(--transition);
   }
   .btn-batch-queue:hover {
-    opacity: 0.85;
+    background: var(--accent-2);
   }
 </style>
