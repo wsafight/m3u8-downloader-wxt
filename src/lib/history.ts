@@ -16,7 +16,7 @@ export async function getHistory(): Promise<HistoryEntry[]> {
 
 export async function removeHistoryEntry(id: string): Promise<void> {
   const list = await getHistory();
-  await chrome.storage.local.set({ [KEY]: list.filter(e => e.id !== id) });
+  await chrome.storage.local.set({ [KEY]: list.filter((e) => e.id !== id) });
 }
 
 export async function clearHistory(): Promise<void> {

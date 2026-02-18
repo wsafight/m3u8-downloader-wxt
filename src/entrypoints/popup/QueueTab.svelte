@@ -5,10 +5,10 @@
   let { items = $bindable<QueueItem[]>([]) } = $props();
 
   const statusLabel: Record<QueueItem['status'], string> = {
-    pending:     '等待中',
+    pending: '等待中',
     downloading: '下载中',
-    done:        '已完成',
-    error:       '失败',
+    done: '已完成',
+    error: '失败',
   };
 
   function shortUrl(url: string): string {
@@ -16,25 +16,43 @@
       const u = new URL(url);
       const p = u.pathname.length > 36 ? '…' + u.pathname.slice(-34) : u.pathname;
       return u.hostname + p;
-    } catch { return url.slice(0, 42); }
+    } catch {
+      return url.slice(0, 42);
+    }
   }
 
   async function remove(id: string) {
     await removeQueueItem(id);
-    items = items.filter(i => i.id !== id);
+    items = items.filter((i) => i.id !== id);
   }
 
   async function clearDone() {
     await clearDoneItems();
-    items = items.filter(i => i.status === 'pending' || i.status === 'downloading');
+    items = items.filter((i) => i.status === 'pending' || i.status === 'downloading');
   }
 
-  const hasDone = $derived(items.some(i => i.status === 'done' || i.status === 'error'));
+  const hasDone = $derived(items.some((i) => i.status === 'done' || i.status === 'error'));
 </script>
 
 {#if items.length === 0}
   <div class="empty">
-    <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="28" rx="4" stroke="var(--border-hi)" stroke-width="1.5"/><path d="M16 20h16M16 28h10" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" opacity=".4"/></svg>
+    <svg viewBox="0 0 48 48" fill="none"
+      ><rect
+        x="8"
+        y="12"
+        width="32"
+        height="28"
+        rx="4"
+        stroke="var(--border-hi)"
+        stroke-width="1.5"
+      /><path
+        d="M16 20h16M16 28h10"
+        stroke="var(--text-3)"
+        stroke-width="2"
+        stroke-linecap="round"
+        opacity=".4"
+      /></svg
+    >
     <p>队列为空</p>
     <span>在检测到的流中点击「加入队列」</span>
   </div>
@@ -53,7 +71,9 @@
           <span class="fname" title={item.filename}>{item.filename}</span>
           <span class="url" title={item.url}>{shortUrl(item.url)}</span>
           {#if item.status === 'downloading' && item.progress > 0}
-            <div class="prog-track"><div class="prog-fill" style="width:{Math.round(item.progress*100)}%"></div></div>
+            <div class="prog-track">
+              <div class="prog-fill" style="width:{Math.round(item.progress * 100)}%"></div>
+            </div>
           {/if}
           {#if item.status === 'error' && item.errorMsg}
             <span class="err-msg">{item.errorMsg}</span>
@@ -69,62 +89,151 @@
 
 <style>
   .empty {
-    display: flex; flex-direction: column; align-items: center;
-    padding: 36px 20px; gap: 6px; color: var(--text-3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 36px 20px;
+    gap: 6px;
+    color: var(--text-3);
   }
-  .empty svg { width: 48px; height: 48px; margin-bottom: 4px; }
-  .empty p { font-size: 12px; font-weight: 600; color: var(--text-2); }
-  .empty span { font-size: 11px; }
+  .empty svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
+  }
+  .empty p {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .empty span {
+    font-size: 11px;
+  }
 
   .toolbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 12px 4px; font-size: 11px; color: var(--text-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 4px;
+    font-size: 11px;
+    color: var(--text-3);
   }
   .clear-btn {
-    font-size: 11px; color: var(--text-3); background: none; padding: 2px 6px;
-    border: 1px solid transparent; border-radius: 4px; transition: background .15s;
+    font-size: 11px;
+    color: var(--text-3);
+    background: none;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: background 0.15s;
   }
-  .clear-btn:hover { background: var(--surface-3); color: var(--text); }
+  .clear-btn:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
 
-  .list { list-style: none; padding: 4px 6px; display: flex; flex-direction: column; gap: 3px; }
+  .list {
+    list-style: none;
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
 
   .item {
-    display: flex; align-items: flex-start; gap: 8px;
-    padding: 8px 10px; border-radius: 8px;
-    background: var(--surface-2); border: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
   }
 
   .status-chip {
-    flex-shrink: 0; padding: 2px 7px; border-radius: 10px;
-    font-size: 10px; font-weight: 600; margin-top: 2px;
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 2px;
   }
-  [data-status="pending"]     { background: var(--surface-3); color: var(--text-3); }
-  [data-status="downloading"] { background: #5b9df615; color: var(--accent); }
-  [data-status="done"]        { background: #34d39920; color: var(--success); }
-  [data-status="error"]       { background: #f8717120; color: var(--error); }
+  [data-status='pending'] {
+    background: var(--surface-3);
+    color: var(--text-3);
+  }
+  [data-status='downloading'] {
+    background: #5b9df615;
+    color: var(--accent);
+  }
+  [data-status='done'] {
+    background: #34d39920;
+    color: var(--success);
+  }
+  [data-status='error'] {
+    background: #f8717120;
+    color: var(--error);
+  }
 
-  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .fname {
-    font-size: 12px; font-weight: 600; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .url {
-    font-size: 10px; color: var(--text-3);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 10px;
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: monospace;
   }
 
   .prog-track {
-    height: 3px; border-radius: 2px; background: var(--surface-3); margin-top: 4px; overflow: hidden;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    margin-top: 4px;
+    overflow: hidden;
   }
-  .prog-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+  .prog-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
 
-  .err-msg { font-size: 10px; color: var(--error); }
+  .err-msg {
+    font-size: 10px;
+    color: var(--error);
+  }
 
   .rm {
-    flex-shrink: 0; width: 20px; height: 20px; border-radius: 4px; margin-top: 1px;
-    background: none; color: var(--text-3); font-size: 14px; line-height: 1;
-    transition: background .15s, color .15s;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    margin-top: 1px;
+    background: none;
+    color: var(--text-3);
+    font-size: 14px;
+    line-height: 1;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
-  .rm:hover { background: #f871711a; color: var(--error); }
+  .rm:hover {
+    background: #f871711a;
+    color: var(--error);
+  }
 </style>

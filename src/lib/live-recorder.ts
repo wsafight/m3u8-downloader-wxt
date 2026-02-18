@@ -17,7 +17,7 @@ export class LiveRecorder {
 
   private _stopping = false;
   private _abortController = new AbortController();
-  private _chunks: Blob[] = [];       // intermediate Blobs flushed every N segments
+  private _chunks: Blob[] = []; // intermediate Blobs flushed every N segments
   private _pending: ArrayBuffer[] = [];
   private _segCount = 0;
   private _durationSec = 0;
@@ -25,10 +25,10 @@ export class LiveRecorder {
   private readonly FLUSH_EVERY = 100;
 
   constructor(opts: LiveRecorderOptions = {}) {
-    this.concurrency   = opts.concurrency   ?? 4;
-    this.retries       = opts.retries       ?? 3;
+    this.concurrency = opts.concurrency ?? 4;
+    this.retries = opts.retries ?? 3;
     this.onSegmentDone = opts.onSegmentDone ?? (() => {});
-    this.onStatus      = opts.onStatus      ?? (() => {});
+    this.onStatus = opts.onStatus ?? (() => {});
   }
 
   stop() {
@@ -48,18 +48,27 @@ export class LiveRecorder {
           signal: this._abortController.signal,
         });
         if (res.ok) text = await res.text();
-      } catch {
+        else this.onStatus(`播放列表请求失败：HTTP ${res.status}，3 秒后重试`, 'error');
+      } catch (e) {
         if (this._stopping) break;
+        // AbortError is expected when stop() is called; only log unexpected errors
+        if ((e as Error)?.name !== 'AbortError') {
+          const msg = e instanceof Error ? e.message : String(e);
+          this.onStatus(`拉取播放列表失败：${msg}，3 秒后重试`, 'error');
+        }
         await this._wait(3000);
         continue;
       }
 
-      if (!text) { await this._wait(3000); continue; }
+      if (!text) {
+        await this._wait(3000);
+        continue;
+      }
 
       const playlist = M3U8Parser.parse(text, m3u8Url);
       if (playlist.type !== 'media') break;
 
-      const newSegs = playlist.segments.filter(s => !seen.has(s.url));
+      const newSegs = playlist.segments.filter((s) => !seen.has(s.url));
       for (const seg of newSegs) {
         if (this._stopping) break;
         seen.add(seg.url);
@@ -106,23 +115,27 @@ export class LiveRecorder {
   }
 
   private async _downloadSegment(seg: Segment): Promise<ArrayBuffer | null> {
+    let lastError = '';
     for (let attempt = 0; attempt < this.retries; attempt++) {
       try {
         const headers: HeadersInit = seg.byteRange
-          ? { Range: `bytes=${seg.byteRange.offset}-${seg.byteRange.offset + seg.byteRange.length - 1}` }
+          ? {
+              Range: `bytes=${seg.byteRange.offset}-${seg.byteRange.offset + seg.byteRange.length - 1}`,
+            }
           : {};
         const res = await fetch(seg.url, { credentials: 'include', headers });
         if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
         return await res.arrayBuffer();
-      } catch {
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
         if (attempt < this.retries - 1) await this._wait(800 * (attempt + 1));
       }
     }
-    this.onStatus(`分片下载失败，已跳过: ${seg.url.slice(-40)}`, 'error');
+    this.onStatus(`分片下载失败（${lastError}），已跳过: ${seg.url.slice(-40)}`, 'error');
     return null;
   }
 
   private _wait(ms: number): Promise<void> {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
   }
 }

@@ -1,169 +1,236 @@
 # M3U8 Stream Downloader
 
-浏览器扩展，自动检测网页中的 HLS/M3U8 视频流并下载为本地文件。支持加密流、多清晰度、fMP4、直播录制、批量队列。
+A browser extension that automatically detects and downloads HLS/M3U8 video streams from any webpage. Supports encrypted streams, multi-quality selection, fMP4 output, live-stream recording, batch download queue, and in-popup HLS preview.
 
-## 功能
+---
 
-### 核心下载
-- **自动检测**：拦截 XHR/Fetch 请求、监听网络响应头、扫描 DOM，三路并行捕获 M3U8 地址
-- **多清晰度**：解析 Master Playlist，按带宽排序，支持手动选择画质
-- **加密支持**：AES-128 + CBC 模式，自动获取密钥并缓存，支持显式 IV 和序列号推导 IV
-- **fMP4 支持**：解析 `#EXT-X-MAP` 初始化分片，`#EXT-X-BYTERANGE` 字节范围请求，自动输出 `.mp4`
-- **并发下载**：可配置 1–16 线程，失败自动重试（指数退避），中止时立即取消所有在途请求
-- **低内存合并**：每 100 段生成一次中间 Blob 并释放 ArrayBuffer 引用，避免大文件 OOM
+## Features
 
-### 业务增强
-- **实时速度 & ETA**：4 秒滚动窗口计算瞬时下载速度，动态估算剩余时间
-- **分片范围选择**：双滑块精确选取起止分片，显示时间戳与预计时长，方便截取片段
-- **直播流录制**：自动识别直播流，一键录制，停止后合并为 `.ts` 文件并保存
-- **批量下载队列**：将多个流加入队列，background 依次自动处理，无需手动逐一操作
-- **下载历史**：记录最近 200 条下载记录（文件名、大小、分片数、域名），支持删除与清空
-- **持久化设置**：并发线程数通过 `chrome.storage.sync` 跨会话保存，重启扩展后自动恢复
+### Core Download
 
-## 技术栈
+- **Automatic detection** — intercepts XHR/Fetch calls, monitors network response headers, and scans the DOM; three parallel detection paths ensure no stream is missed.
+- **Multi-quality selection** — parses HLS master playlists, sorts variants by bandwidth, and lets you pick a quality tier.
+- **AES-128 decryption** — CBC mode, automatic key fetch and caching, supports both explicit IV and sequence-number-derived IV.
+- **fMP4 support** — parses `#EXT-X-MAP` init segments and `#EXT-X-BYTERANGE` byte-range requests; outputs `.mp4` automatically.
+- **Concurrent downloads** — configurable 1–16 threads, automatic retry with exponential backoff, immediate abort of all in-flight requests.
+- **Low-memory merging** — intermediate Blob is flushed every 100 segments and ArrayBuffer references are released to prevent OOM on large files.
+- **TS → MP4 conversion** — toggle to remux MPEG-TS segments into fragmented MP4 in-browser via mux.js, no FFmpeg required; falls back to `.ts` on failure.
 
-| 层 | 技术 |
-|---|---|
-| 扩展框架 | [WXT](https://wxt.dev) v0.20 + Manifest V3 |
-| UI | Svelte 5 (`$state` / `$derived` / `$effect`) |
-| 语言 | TypeScript 5.5 |
-| 构建 | Vite（via WXT） |
-| 包管理 | Bun |
+### Enhanced Capabilities
 
-## 开发
+- **Real-time speed & ETA** — 4-second rolling window for instantaneous speed, dynamic remaining-time estimate.
+- **Segment range selection** — dual-slider to choose start/end segments with timestamp display and estimated clip duration.
+- **Live-stream recording** — auto-detects live streams, records with one click, stops and merges into a `.ts` file.
+- **Batch download queue** — add multiple streams to a queue; the background worker processes them in order automatically.
+- **Download history** — stores up to 200 records (filename, size, segment count, domain); supports deletion and bulk-clear.
+- **Settings sync** — concurrency and output-format preferences persisted in `chrome.storage.sync` across sessions and devices.
+- **Segment status grid** — real-time dot grid showing per-segment status (grey = pending / green = ok / red = failed); auto-groups segments when count exceeds 400.
+- **Partial save & retry** — on partial failure, retry only failed segments or save completed segments immediately.
+- **Smart error diagnosis** — HTTP status codes categorised intelligently: 403 prompts re-login, 404 flags an expired link, 429 suggests reducing concurrency, 5xx recommends retrying later.
+- **In-popup HLS preview** — click ▶ in the stream list to play the stream live inside the extension via hls.js before downloading.
+
+---
+
+## Tech Stack
+
+| Layer                         | Technology                                                         |
+| ----------------------------- | ------------------------------------------------------------------ |
+| Extension framework           | [WXT](https://wxt.dev) v0.20 — Manifest V3, Chrome + Firefox       |
+| UI framework                  | [Svelte 5](https://svelte.dev) (`$state` / `$derived` / `$effect`) |
+| Language                      | TypeScript 5.9 (strict mode)                                       |
+| Bundler                       | Vite 7 (via WXT)                                                   |
+| Package manager & test runner | [Bun](https://bun.sh)                                              |
+| TS → MP4 remuxing             | [mux.js](https://github.com/videojs/mux.js) 6.3                    |
+| HLS preview                   | [hls.js](https://github.com/video-dev/hls.js) 1.6                  |
+
+---
+
+## Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh) ≥ 1.0
+- Chrome 109+ or Firefox 109+
+
+### Install dependencies
 
 ```bash
-# 安装依赖
 bun install
-
-# 开发模式（Chrome）
-bun dev
-
-# 开发模式（Firefox）
-bun dev:firefox
-
-# 构建
-bun build
-
-# 打包为 .zip（Chrome）
-bun zip
-
-# 打包为 .zip（Firefox）
-bun zip:firefox
 ```
 
-构建产物在 `.output/` 目录，`chrome-mv3/` 子目录即可加载到浏览器。
+### Dev mode
 
-## 加载扩展
+```bash
+# Chrome (default)
+bun run dev
 
-1. 打开 `chrome://extensions`
-2. 开启"开发者模式"
-3. 点击"加载已解压的扩展程序"，选择 `.output/chrome-mv3/`
+# Firefox
+bun run dev:firefox
+```
 
-## 项目结构
+WXT launches a browser with the extension hot-loaded.
+
+### Build
+
+```bash
+bun run build          # Chrome
+bun run build:firefox  # Firefox
+```
+
+Output goes to `.output/chrome-mv3/` (or `firefox-mv2/`).
+
+### Package for distribution
+
+```bash
+bun run zip          # Chrome zip
+bun run zip:firefox  # Firefox zip
+```
+
+### Run tests
+
+```bash
+bun test
+```
+
+---
+
+## Load the Extension
+
+1. Open `chrome://extensions` in your browser.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select `.output/chrome-mv3/`.
+
+---
+
+## Project Structure
 
 ```
 src/
 ├── entrypoints/
-│   ├── hooks.content.ts     # MAIN world — hook 页面 XHR/fetch
-│   ├── content.ts           # ISOLATED world — DOM 观察 + 消息中继
-│   ├── background.ts        # Service Worker — 网络拦截、流管理、队列调度
+│   ├── hooks.content.ts           # MAIN world — intercepts page XHR / fetch
+│   ├── content.ts                 # ISOLATED world — DOM scan + message relay
+│   ├── background.ts              # Service Worker — network intercept, stream store, queue
 │   ├── popup/
-│   │   ├── App.svelte       # 弹窗主界面（三标签：流列表 / 队列 / 历史）
-│   │   ├── QueueTab.svelte  # 下载队列标签页
-│   │   └── HistoryTab.svelte# 下载历史标签页
+│   │   ├── App.svelte             # Popup root (stream list / queue / history tabs)
+│   │   ├── QueueTab.svelte        # Queue tab
+│   │   └── HistoryTab.svelte      # History tab
 │   └── download/
-│       ├── App.svelte       # 下载页（进度 / 速度 / 直播录制 / 分片范围）
-│       └── SegmentRangeSlider.svelte  # 双滑块分片范围选择器
+│       ├── App.svelte             # Download page root
+│       ├── ActionButtons.svelte   # Start / abort / retry buttons
+│       ├── LogTerminal.svelte     # Scrollable activity log
+│       ├── ProgressDisplay.svelte # Progress bar + ETA
+│       ├── RecordingStatus.svelte # Live recording stats
+│       ├── SegmentGrid.svelte     # Per-segment status dots
+│       └── SegmentRangeSlider.svelte # Dual-slider range selector
 └── lib/
-    ├── types.ts             # 公共类型定义
-    ├── m3u8-parser.ts       # HLS 播放列表解析器
-    ├── downloader.ts        # 下载引擎（并发 / 解密 / 合并 / 速度追踪）
-    ├── live-recorder.ts     # 直播录制器（轮询 / 去重 / 分块 Blob）
-    ├── settings.ts          # 用户设置持久化（chrome.storage.sync）
-    ├── history.ts           # 下载历史 CRUD（chrome.storage.local）
-    └── queue.ts             # 下载队列操作（chrome.storage.local）
+    ├── types.ts          # Shared type definitions
+    ├── messages.ts       # Inter-component message constants
+    ├── settings.ts       # User settings (chrome.storage.sync)
+    ├── m3u8-parser.ts    # HLS playlist parser
+    ├── downloader.ts     # Download engine (concurrency, decrypt, merge, speed)
+    ├── live-recorder.ts  # Live recorder (poll, dedup, chunked Blob)
+    ├── remux.ts          # MPEG-TS → fMP4 via mux.js
+    ├── queue.ts          # Download queue CRUD (chrome.storage.local)
+    └── history.ts        # Download history CRUD (chrome.storage.local)
 ```
 
-## 架构说明
+---
 
-### 检测流程
+## Architecture
+
+### Detection Pipeline
 
 ```
-页面 XHR/fetch ──► hooks.content.ts (MAIN world)
-                        │ CustomEvent
-                        ▼
-                   content.ts (ISOLATED world) ──► background.ts
-                        │                               │
-              DOM <video>/<source>              webRequest 响应头
-                                                        │
-                                                   更新 badge 计数
+Page XHR / fetch ──► hooks.content.ts  (MAIN world)
+                              │  CustomEvent "__m3u8_detected__"
+                              ▼
+                         content.ts  (ISOLATED world) ──► background.ts
+                              │                                  │
+                   DOM <video> / <source>             webRequest response headers
+                                                               │
+                                                        update badge count
 ```
 
-MAIN world 脚本能访问页面真实的 `window.XMLHttpRequest` 和 `window.fetch`（ISOLATED world 无法做到这一点）。两个 content script 通过 `CustomEvent` 跨 world 通信，background 同时通过 `webRequest` API 兜底捕获所有漏网请求。
+The MAIN-world hook can access the page's real `window.fetch` and `window.XMLHttpRequest` (the isolated world cannot). The two content scripts communicate via `CustomEvent`, while the background service worker provides a safety net via the `webRequest` API.
 
-### 点播下载流程
+### VOD Download Pipeline
 
 ```
 M3U8 URL
    │
-   ├─► 解析 Master Playlist → 选择画质
+   ├─► Parse master playlist → select quality variant
    │
-   ├─► 解析 Media Playlist → 提取分片列表 + 加密信息 + init segment
+   ├─► Parse media playlist → extract segments + encryption info + init segment
    │
-   ├─► [可选] 双滑块选取 startIndex ~ endIndex 分片范围
+   ├─► [Optional] dual-slider: pick startIndex ~ endIndex
    │
-   ├─► 并发下载分片（worker pool，AbortController 支持即时取消）
-   │       ├─► AES-128 解密（密钥缓存复用）
-   │       └─► 实时上报速度样本（4 秒滚动窗口）→ 计算 ETA
+   ├─► Concurrent segment fetch (worker pool, AbortController for instant cancel)
+   │       ├─► AES-128 decrypt (key cache reuse)
+   │       └─► Speed sampling (4-second rolling window) → ETA
    │
-   ├─► 批次合并 Blob（每 100 段一批，释放 ArrayBuffer）
+   ├─► Batch-merge Blob every 100 segments, release ArrayBuffer
    │
-   ├─► chrome.downloads.download() 保存文件
+   ├─► [Optional] TS → fMP4 remux via mux.js
    │
-   └─► 写入下载历史（chrome.storage.local）
+   ├─► chrome.downloads.download() → save to disk
+   │
+   └─► Write download history (chrome.storage.local)
 ```
 
-### 直播录制流程
+### Live Recording Pipeline
 
 ```
-直播 M3U8 URL
+Live M3U8 URL (isEndList=false)
    │
-   ├─► 检测到 isEndList=false → 进入录制模式
+   ├─► Enter recording mode
    │
-   ├─► 轮询 Playlist（每 targetDuration/2 秒）
-   │       └─► 过滤已见 URL（Set<string> 去重）
-   │               └─► 下载新分片 → 追加 pending[]
-   │                       └─► 每 100 段 → flush 为 Blob（释放内存）
+   ├─► Poll playlist every targetDuration / 2 seconds
+   │       └─► Filter already-seen URLs (Set<string> dedup)
+   │               └─► Download new segments → append to pending[]
+   │                       └─► every 100 segments → flush to Blob (free memory)
    │
-   ├─► 用户点击停止 → _stopping=true，AbortController.abort()
+   ├─► User clicks Stop → _stopping = true, AbortController.abort()
    │
-   └─► saveAs() → 合并所有 Blob → chrome.downloads 保存 .ts
+   └─► saveAs() → merge all Blobs → chrome.downloads saves .ts
 ```
 
-### 队列调度流程
+### Queue Scheduling
 
 ```
 popup → enqueueItem() → chrome.storage.local
       → sendMessage(ENQUEUE) → background.ts
-                                    │
-                          processNextQueueItem()
-                                    │
-                          chrome.tabs.create(download.html?queueId=…)
-                                    │
-                          download/App.svelte 完成后
-                          sendMessage(QUEUE_ITEM_DONE)
-                                    │
-                          background 继续处理下一条
+                                     │
+                           processNextQueueItem()
+                                     │
+                           chrome.tabs.create(download.html?queueId=…)
+                                     │
+                           download/App.svelte completes
+                           sendMessage(QUEUE_ITEM_DONE)
+                                     │
+                           background processes next item
 ```
 
-## 权限说明
+---
 
-| 权限 | 用途 |
-|---|---|
-| `webRequest` | 拦截响应头检测 M3U8 Content-Type |
-| `downloads` | 调用系统下载管理器保存文件 |
-| `storage` | 持久化设置、下载历史、下载队列 |
-| `tabs` | 获取当前标签页 ID，队列调度时创建下载页 |
-| `scripting` / `activeTab` | 注入内容脚本 |
-| `<all_urls>` | 监听所有网站的网络请求 |
+## Permissions
+
+| Permission                     | Reason                                            |
+| ------------------------------ | ------------------------------------------------- |
+| `webRequest`                   | Detect M3U8 via response Content-Type header      |
+| `downloads`                    | Save merged video files to disk                   |
+| `storage`                      | Persist settings, history, and queue              |
+| `tabs`                         | Get tab ID and open download page for queue items |
+| `scripting` / `activeTab`      | Inject content scripts                            |
+| `host_permissions: <all_urls>` | Monitor requests on any website                   |
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
+## License
+
+MIT

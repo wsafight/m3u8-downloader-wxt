@@ -1,20 +1,36 @@
 import { M3U8Parser } from './m3u8-parser';
-import type { ByteRange, InitSegment, Segment, StreamDef } from './types';
+import { remuxTsToMp4 } from './remux';
+import type { ByteRange, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
 
 export interface DownloaderOptions {
   concurrency?: number;
   retries?: number;
   startIndex?: number; // inclusive, for range downloads
-  endIndex?: number;   // inclusive, for range downloads
-  onProgress?: (ratio: number, done: number, total: number, speedBps: number, downloadedBytes: number) => void;
-  onStatus?: (msg: string, type?: 'info' | 'ok' | 'error') => void;
+  endIndex?: number; // inclusive, for range downloads
+  convertToMp4?: boolean; // remux TS → fMP4 after download
+  onProgress?: (
+    ratio: number,
+    done: number,
+    total: number,
+    speedBps: number,
+    downloadedBytes: number,
+  ) => void;
+  onStatus?: (msg: string, type?: 'info' | 'ok' | 'warn' | 'error') => void;
   onQualityChoice?: (streams: StreamDef[]) => Promise<StreamDef>;
+  onSegmentStatus?: (statuses: readonly SegmentStatus[]) => void;
 }
 
 export interface DownloadResult {
   bytes: number;
   segments: number;
   ext: string; // 'ts' or 'mp4'
+}
+
+export class PartialDownloadError extends Error {
+  constructor(public readonly failedCount: number) {
+    super(`${failedCount} 个分片下载失败`);
+    this.name = 'PartialDownloadError';
+  }
 }
 
 const MERGE_BATCH = 100;
@@ -24,9 +40,11 @@ export class M3U8Downloader {
   private retries: number;
   private startIndex: number | undefined;
   private endIndex: number | undefined;
+  private convertToMp4: boolean;
   private onProgress: NonNullable<DownloaderOptions['onProgress']>;
   private onStatus: NonNullable<DownloaderOptions['onStatus']>;
   private onQualityChoice: DownloaderOptions['onQualityChoice'];
+  private onSegmentStatus: DownloaderOptions['onSegmentStatus'];
   private _aborted = false;
   private _abortController: AbortController | null = null;
   private _keyCache = new Map<string, CryptoKey>();
@@ -34,19 +52,41 @@ export class M3U8Downloader {
   private _downloadedBytes = 0;
   private _speedSamples: { t: number; cumBytes: number }[] = [];
 
+  // Per-download state (preserved after completion for retry/savePartial)
+  private _segStatuses: SegmentStatus[] = [];
+  private _buffers: Array<ArrayBuffer | null> = [];
+  private _pendingSegments: Segment[] = [];
+  private _pendingInitBuffer: ArrayBuffer | null = null;
+  private _pendingIsFmp4 = false;
+  private _pendingFilename = '';
+
   constructor(opts: DownloaderOptions = {}) {
-    this.concurrency     = opts.concurrency ?? 6;
-    this.retries         = opts.retries     ?? 3;
-    this.startIndex      = opts.startIndex;
-    this.endIndex        = opts.endIndex;
-    this.onProgress      = opts.onProgress  ?? (() => {});
-    this.onStatus        = opts.onStatus    ?? (() => {});
+    this.concurrency = opts.concurrency ?? 6;
+    this.retries = opts.retries ?? 3;
+    this.startIndex = opts.startIndex;
+    this.endIndex = opts.endIndex;
+    this.convertToMp4 = opts.convertToMp4 ?? false;
+    this.onProgress = opts.onProgress ?? (() => {});
+    this.onStatus = opts.onStatus ?? (() => {});
     this.onQualityChoice = opts.onQualityChoice;
+    this.onSegmentStatus = opts.onSegmentStatus;
   }
 
   abort() {
     this._aborted = true;
     this._abortController?.abort();
+  }
+
+  /** Current per-segment statuses (snapshot copy). */
+  get segmentStatuses(): readonly SegmentStatus[] {
+    return [...this._segStatuses];
+  }
+
+  /** Indices of segments that failed in the last download. */
+  get failedIndices(): number[] {
+    return this._segStatuses
+      .map((s, i) => (s === 'failed' ? i : -1))
+      .filter((i): i is number => i !== -1);
   }
 
   async download(m3u8Url: string, filename = 'video'): Promise<DownloadResult> {
@@ -81,12 +121,7 @@ export class M3U8Downloader {
     const end = Math.min(allSegs.length - 1, this.endIndex ?? allSegs.length - 1);
     const segments = allSegs.slice(start, end + 1);
 
-    return this.downloadSegments(
-      segments,
-      filename,
-      playlist.initSegment,
-      playlist.isFmp4,
-    );
+    return this.downloadSegments(segments, filename, playlist.initSegment, playlist.isFmp4);
   }
 
   /** Download a pre-sliced segment list directly (used for range downloads). */
@@ -110,43 +145,202 @@ export class M3U8Downloader {
     const fmt = isFmp4 ? 'fMP4' : 'TS';
     this.onStatus(`共 ${total} 个分片 (${fmt})，时长约 ${dur}，开始并发下载…`, 'ok');
 
+    // Save state for later retry / savePartial
+    this._pendingSegments = segments;
+    this._pendingInitBuffer = initBuffer;
+    this._pendingIsFmp4 = isFmp4;
+    this._pendingFilename = filename;
+    this._segStatuses = new Array<SegmentStatus>(total).fill('pending');
+    this._buffers = new Array<ArrayBuffer | null>(total).fill(null);
+
+    // Notify initial statuses
+    this.onSegmentStatus?.([...this._segStatuses]);
+
     // ── Concurrent download ────────────────────────────────────────
-    const buffers = new Array<ArrayBuffer | null>(total).fill(null);
     let done = 0;
 
     await this.pool(total, async (i) => {
       if (this._aborted) throw new Error('已中止');
-      buffers[i] = await this.downloadSegment(segments[i]);
-      done++;
-      this.onProgress(done / total, done, total, this._calcSpeed(), this._downloadedBytes);
+      try {
+        this._buffers[i] = await this.downloadSegment(segments[i]);
+        this._segStatuses[i] = 'ok';
+        done++;
+        this.onProgress(done / total, done, total, this._calcSpeed(), this._downloadedBytes);
+        this.onSegmentStatus?.([...this._segStatuses]);
+      } catch (e) {
+        // Re-throw abort; swallow other errors and mark segment failed
+        if (this._aborted || (e instanceof Error && e.message === '已中止')) {
+          throw new Error('已中止');
+        }
+        this._segStatuses[i] = 'failed';
+        this.onSegmentStatus?.([...this._segStatuses]);
+        this.onStatus(`分片 ${i + 1} 下载失败`, 'warn');
+      }
     });
 
     if (this._aborted) throw new Error('已中止');
 
-    // ── Batch merge ────────────────────────────────────────────────
-    this.onStatus('正在合并分片…');
-    const parts: Blob[] = [];
-    if (initBuffer) { parts.push(new Blob([initBuffer])); initBuffer = null; }
-    for (let i = 0; i < total; i += MERGE_BATCH) {
-      const end = Math.min(i + MERGE_BATCH, total);
-      parts.push(new Blob(buffers.slice(i, end) as ArrayBuffer[]));
-      for (let j = i; j < end; j++) buffers[j] = null;
+    // ── Check for failures ─────────────────────────────────────────
+    const failedCount = this._segStatuses.filter((s) => s === 'failed').length;
+    if (failedCount > 0) {
+      this.onStatus(`${failedCount} 个分片失败，可点击"重新下载失败片段"重试`, 'error');
+      throw new PartialDownloadError(failedCount);
     }
 
-    const ext = isFmp4 ? 'mp4' : 'ts';
-    const mimeType = isFmp4 ? 'video/mp4' : 'video/mp2t';
-    const blob = new Blob(parts, { type: mimeType });
-
-    // ── Save ───────────────────────────────────────────────────────
-    this.onStatus('准备保存文件…');
-    await this.saveBlob(blob, `${filename}.${ext}`);
-
-    const mb = (blob.size / 1024 / 1024).toFixed(2);
-    this.onStatus(`下载完成！${total} 个分片，${mb} MB`, 'ok');
-    return { bytes: blob.size, segments: total, ext };
+    // ── Merge and save ─────────────────────────────────────────────
+    this.onStatus('正在合并分片…');
+    return this.mergeAndSave(this._buffers, filename, initBuffer, isFmp4, total);
   }
 
-  // ── Internals ──────────────────────────────────────────────────
+  /**
+   * Re-download all failed segments, then merge and save.
+   * Only valid after a PartialDownloadError from download/downloadSegments.
+   */
+  async retryFailed(): Promise<DownloadResult> {
+    const failedIdx = this.failedIndices;
+    if (failedIdx.length === 0) throw new Error('没有失败的分片');
+
+    this._aborted = false;
+    this._abortController = new AbortController();
+    this._speedSamples = [];
+
+    const total = this._pendingSegments.length;
+    let okCount = this._segStatuses.filter((s) => s === 'ok').length;
+
+    this.onStatus(`重试 ${failedIdx.length} 个失败分片…`, 'info');
+
+    // Mark all failed back to pending
+    for (const i of failedIdx) {
+      this._segStatuses[i] = 'pending';
+    }
+    this.onSegmentStatus?.([...this._segStatuses]);
+
+    // Pool over only the failed indices
+    let cursor = 0;
+    const run = async () => {
+      while (cursor < failedIdx.length && !this._aborted) {
+        const pos = cursor++;
+        const i = failedIdx[pos];
+        try {
+          this._buffers[i] = await this.downloadSegment(this._pendingSegments[i]);
+          this._segStatuses[i] = 'ok';
+          okCount++;
+          this.onProgress(
+            okCount / total,
+            okCount,
+            total,
+            this._calcSpeed(),
+            this._downloadedBytes,
+          );
+          this.onSegmentStatus?.([...this._segStatuses]);
+        } catch (e) {
+          if (this._aborted || (e instanceof Error && e.message === '已中止')) {
+            throw new Error('已中止');
+          }
+          this._segStatuses[i] = 'failed';
+          this.onSegmentStatus?.([...this._segStatuses]);
+          this.onStatus(`分片 ${i + 1} 重试失败`, 'warn');
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.concurrency, failedIdx.length) }, run));
+
+    if (this._aborted) throw new Error('已中止');
+
+    const stillFailed = this._segStatuses.filter((s) => s === 'failed').length;
+    if (stillFailed > 0) {
+      this.onStatus(`仍有 ${stillFailed} 个分片失败`, 'error');
+      throw new PartialDownloadError(stillFailed);
+    }
+
+    this.onStatus('重试完成，正在合并…', 'ok');
+    return this.mergeAndSave(
+      this._buffers,
+      this._pendingFilename,
+      this._pendingInitBuffer,
+      this._pendingIsFmp4,
+      total,
+    );
+  }
+
+  /**
+   * Save only the segments that have already succeeded.
+   * Safe to call during an active download or after a PartialDownloadError.
+   * The filename will have "_partial" appended before the extension.
+   */
+  async savePartial(filenameOverride?: string): Promise<void> {
+    const fn = filenameOverride ?? this._pendingFilename;
+    const okBuffers = this._segStatuses
+      .map((s, i) => (s === 'ok' ? this._buffers[i] : null))
+      .filter((b): b is ArrayBuffer => b !== null);
+
+    if (okBuffers.length === 0) throw new Error('没有已成功的分片');
+
+    this.onStatus(`正在保存 ${okBuffers.length} 个已完成分片…`, 'info');
+
+    const parts: Blob[] = [];
+    if (this._pendingInitBuffer) parts.push(new Blob([this._pendingInitBuffer]));
+    for (let i = 0; i < okBuffers.length; i += MERGE_BATCH) {
+      parts.push(new Blob(okBuffers.slice(i, i + MERGE_BATCH)));
+    }
+    const ext = this._pendingIsFmp4 ? 'mp4' : 'ts';
+    const mimeType = this._pendingIsFmp4 ? 'video/mp4' : 'video/mp2t';
+    const blob = new Blob(parts, { type: mimeType });
+    const mb = (blob.size / 1024 / 1024).toFixed(1);
+    await this.saveBlob(blob, `${fn}_partial.${ext}`);
+    this.onStatus(`已保存 ${okBuffers.length} 个分片（${mb} MB）`, 'ok');
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────
+
+  private async mergeAndSave(
+    buffers: Array<ArrayBuffer | null>,
+    filename: string,
+    initBuffer: ArrayBuffer | null,
+    isFmp4: boolean,
+    totalSegments: number,
+  ): Promise<DownloadResult> {
+    const valid = buffers.filter((b): b is ArrayBuffer => b !== null);
+    const parts: Blob[] = [];
+    if (initBuffer) parts.push(new Blob([initBuffer]));
+    for (let i = 0; i < valid.length; i += MERGE_BATCH) {
+      parts.push(new Blob(valid.slice(i, i + MERGE_BATCH)));
+      for (let j = i; j < Math.min(i + MERGE_BATCH, valid.length); j++) {
+        (valid as (ArrayBuffer | null)[])[j] = null;
+      }
+    }
+
+    let ext: string;
+    let finalBlob: Blob;
+
+    if (isFmp4) {
+      // Already fMP4 — save directly
+      ext = 'mp4';
+      finalBlob = new Blob(parts, { type: 'video/mp4' });
+    } else if (this.convertToMp4) {
+      // TS → fMP4 remux
+      this.onStatus('正在转换为 MP4…', 'info');
+      const tsBlob = new Blob(parts, { type: 'video/mp2t' });
+      try {
+        finalBlob = await remuxTsToMp4(tsBlob);
+        ext = 'mp4';
+        this.onStatus('MP4 转换完成', 'ok');
+      } catch (e) {
+        this.onStatus(`MP4 转换失败（${(e as Error).message}），将保存为 .ts`, 'warn');
+        finalBlob = tsBlob;
+        ext = 'ts';
+      }
+    } else {
+      ext = 'ts';
+      finalBlob = new Blob(parts, { type: 'video/mp2t' });
+    }
+
+    this.onStatus('准备保存文件…');
+    await this.saveBlob(finalBlob, `${filename}.${ext}`);
+    const mb = (finalBlob.size / 1024 / 1024).toFixed(2);
+    this.onStatus(`下载完成！${totalSegments} 个分片，${mb} MB`, 'ok');
+    return { bytes: finalBlob.size, segments: totalSegments, ext };
+  }
 
   private async downloadSegment(seg: Segment): Promise<ArrayBuffer> {
     const data = await this.retry(() => this.fetchBinary(seg.url, seg.byteRange));
@@ -188,18 +382,26 @@ export class M3U8Downloader {
     let lastErr: unknown;
     for (let i = 0; i < this.retries; i++) {
       if (this._aborted) throw new Error('已中止');
-      try { return await fn(); } catch (e) {
+      try {
+        return await fn();
+      } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
         lastErr = e;
-        if (i < this.retries - 1) await new Promise(r => setTimeout(r, 800 * (i + 1)));
+        if (i < this.retries - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
       }
     }
     throw lastErr;
   }
 
   private async fetchText(url: string): Promise<string> {
-    const res = await fetch(url, { credentials: 'include', signal: this._abortController?.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+    let res: Response;
+    try {
+      res = await fetch(url, { credentials: 'include', signal: this._abortController?.signal });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
+      throw new Error(`网络请求失败，请检查连接（${this.shortUrl(url)}）`);
+    }
+    if (!res.ok) throw new Error(this.classifyHttpError(res.status, url));
     return res.text();
   }
 
@@ -207,19 +409,47 @@ export class M3U8Downloader {
     const headers: HeadersInit = byteRange
       ? { Range: `bytes=${byteRange.offset}-${byteRange.offset + byteRange.length - 1}` }
       : {};
-    const res = await fetch(url, { credentials: 'include', headers, signal: this._abortController?.signal });
-    if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status} — ${url}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        credentials: 'include',
+        headers,
+        signal: this._abortController?.signal,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
+      throw new Error(`网络请求失败，请检查连接（${this.shortUrl(url)}）`);
+    }
+    if (!res.ok && res.status !== 206) throw new Error(this.classifyHttpError(res.status, url));
     const buf = await res.arrayBuffer();
-    // Track bytes for speed calculation
     this._downloadedBytes += buf.byteLength;
     this._recordSpeedSample();
     return buf;
   }
 
+  private classifyHttpError(status: number, url: string): string {
+    const u = this.shortUrl(url);
+    if (status === 403)
+      return `403 拒绝访问 — 该流可能需要登录或 Referer，请刷新视频页面后重新触发下载（${u}）`;
+    if (status === 404) return `404 未找到 — 链接已失效或分片已过期（${u}）`;
+    if (status === 429) return `429 请求过于频繁 — 尝试降低并发数后重试（${u}）`;
+    if (status >= 500) return `${status} 服务器错误 — 稍后重试（${u}）`;
+    return `HTTP ${status}（${u}）`;
+  }
+
+  private shortUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.length > 40 ? '…' + u.pathname.slice(-35) : u.pathname;
+      return u.hostname + path;
+    } catch {
+      return url.slice(0, 60);
+    }
+  }
+
   private _recordSpeedSample() {
     const now = Date.now();
     this._speedSamples.push({ t: now, cumBytes: this._downloadedBytes });
-    // Keep only samples within the last 4 seconds
     const cutoff = now - 4_000;
     while (this._speedSamples.length > 1 && this._speedSamples[0].t < cutoff) {
       this._speedSamples.shift();

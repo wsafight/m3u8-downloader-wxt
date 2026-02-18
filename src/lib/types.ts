@@ -55,13 +55,16 @@ export interface MediaPlaylist {
 
 export type Playlist = MasterPlaylist | MediaPlaylist;
 
+export type SegmentStatus = 'pending' | 'ok' | 'failed';
+
 export type DownloadPhase =
   | 'idle'
   | 'prefetching'
   | 'downloading'
   | 'merging'
-  | 'recording'   // live stream recording in progress
-  | 'stopping'    // recording stop requested, waiting for final merge
+  | 'partial' // download finished but some segments failed; retry available
+  | 'recording' // live stream recording in progress
+  | 'stopping' // recording stop requested, waiting for final merge
   | 'done'
   | 'error'
   | 'aborted';
@@ -69,7 +72,7 @@ export type DownloadPhase =
 export interface LogEntry {
   time: string;
   msg: string;
-  type: 'info' | 'ok' | 'error';
+  type: 'info' | 'ok' | 'warn' | 'error';
 }
 
 // ── History ──────────────────────────────────────────────────────
@@ -77,7 +80,7 @@ export interface LogEntry {
 export interface HistoryEntry {
   id: string;
   url: string;
-  filename: string;   // saved filename including extension
+  filename: string; // saved filename including extension
   segments: number;
   bytes: number;
   domain: string;
@@ -94,7 +97,7 @@ export interface QueueItem {
   url: string;
   filename: string;
   status: 'pending' | 'downloading' | 'done' | 'error';
-  progress: number;   // 0–1
+  progress: number; // 0–1
   addedAt: number;
   errorMsg?: string;
 }

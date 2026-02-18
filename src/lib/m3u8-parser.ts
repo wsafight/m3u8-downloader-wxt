@@ -1,8 +1,20 @@
-import type { ByteRange, EncryptionInfo, InitSegment, MasterPlaylist, MediaPlaylist, Playlist, Segment, StreamDef } from './types';
+import type {
+  ByteRange,
+  EncryptionInfo,
+  InitSegment,
+  MasterPlaylist,
+  MediaPlaylist,
+  Playlist,
+  Segment,
+  StreamDef,
+} from './types';
 
 export class M3U8Parser {
   static parse(text: string, baseUrl: string): Playlist {
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (!lines[0]?.startsWith('#EXTM3U')) {
       throw new Error('不是合法的 M3U8 文件（缺少 #EXTM3U 头）');
     }
@@ -19,11 +31,11 @@ export class M3U8Parser {
       if (line.startsWith('#EXT-X-STREAM-INF:')) {
         const a = this.parseAttrs(line.slice('#EXT-X-STREAM-INF:'.length));
         pending = {
-          bandwidth:  parseInt(a['BANDWIDTH'] ?? '0') || 0,
+          bandwidth: parseInt(a['BANDWIDTH'] ?? '0') || 0,
           resolution: a['RESOLUTION'] ?? '',
-          codecs:     a['CODECS']     ?? '',
-          name:       a['NAME']       ?? '',
-          frameRate:  parseFloat(a['FRAME-RATE'] ?? '0') || 0,
+          codecs: a['CODECS'] ?? '',
+          name: a['NAME'] ?? '',
+          frameRate: parseFloat(a['FRAME-RATE'] ?? '0') || 0,
         };
       } else if (pending && !line.startsWith('#')) {
         streams.push({ ...pending, url: this.resolve(line, baseUrl) } as StreamDef);
@@ -79,17 +91,18 @@ export class M3U8Parser {
         const url = this.resolve(line, baseUrl);
         let byteRange: ByteRange | undefined;
         if (pendingByteRange) {
-          const offset = pendingByteRange.rawOffset !== undefined
-            ? parseInt(pendingByteRange.rawOffset)
-            : (byteRangeEndByUri.get(url) ?? 0);
+          const offset =
+            pendingByteRange.rawOffset !== undefined
+              ? parseInt(pendingByteRange.rawOffset)
+              : (byteRangeEndByUri.get(url) ?? 0);
           byteRange = { length: pendingByteRange.length, offset };
           byteRangeEndByUri.set(url, offset + pendingByteRange.length);
           pendingByteRange = null;
         }
         segments.push({
           url,
-          duration:   segDuration,
-          sequence:   mediaSequence + segments.length,
+          duration: segDuration,
+          sequence: mediaSequence + segments.length,
           encryption: encryption ? { ...encryption } : null,
           byteRange,
         });
@@ -98,7 +111,16 @@ export class M3U8Parser {
       }
     }
 
-    return { type: 'media', segments, totalDuration, targetDuration, isEndList, isLive: !isEndList, initSegment, isFmp4 };
+    return {
+      type: 'media',
+      segments,
+      totalDuration,
+      targetDuration,
+      isEndList,
+      isLive: !isEndList,
+      initSegment,
+      isFmp4,
+    };
   }
 
   private static parseKey(line: string, baseUrl: string): EncryptionInfo | null {
@@ -109,7 +131,7 @@ export class M3U8Parser {
     return {
       method,
       uri: rawUri ? this.resolve(rawUri, baseUrl) : null,
-      iv:  a['IV'] ? this.parseIV(a['IV']) : null,
+      iv: a['IV'] ? this.parseIV(a['IV']) : null,
     };
   }
 
@@ -131,7 +153,11 @@ export class M3U8Parser {
   }
 
   private static resolve(url: string, base: string): string {
-    try { return new URL(url, base).href; } catch { return url; }
+    try {
+      return new URL(url, base).href;
+    } catch {
+      return url;
+    }
   }
 
   static formatDuration(sec: number): string {

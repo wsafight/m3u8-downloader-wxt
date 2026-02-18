@@ -3,6 +3,8 @@
  * Relays M3U8 detections from the MAIN world hook (via CustomEvent) and
  * from DOM <video>/<source> elements to the background service worker.
  */
+import { MSG } from '../lib/messages';
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_start',
@@ -13,10 +15,14 @@ export default defineContentScript({
 
     function report(raw: string) {
       let url: string;
-      try { url = new URL(raw, location.href).href; } catch { return; }
+      try {
+        url = new URL(raw, location.href).href;
+      } catch {
+        return;
+      }
       if (reported.has(url) || !url.toLowerCase().includes('.m3u8')) return;
       reported.add(url);
-      chrome.runtime.sendMessage({ type: 'M3U8_DETECTED', url }).catch(() => {});
+      chrome.runtime.sendMessage({ type: MSG.M3U8_DETECTED, url }).catch(() => {});
     }
 
     // ── Relay detections from MAIN world ──────────────────────────
@@ -30,7 +36,7 @@ export default defineContentScript({
       if (src) report(src);
     }
 
-    const mo = new MutationObserver(muts => {
+    const mo = new MutationObserver((muts) => {
       for (const m of muts)
         for (const node of m.addedNodes) {
           if (!(node instanceof Element)) continue;

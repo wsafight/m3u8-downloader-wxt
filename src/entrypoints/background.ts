@@ -1,5 +1,6 @@
 import type { StreamInfo } from '../lib/types';
 import { claimNextPending, updateQueueItem } from '../lib/queue';
+import { MSG } from '../lib/messages';
 
 // tabId -> Map<url, StreamInfo>
 const store = new Map<number, Map<string, StreamInfo>>();
@@ -9,11 +10,14 @@ function isM3U8Url(url: string): boolean {
   try {
     const u = new URL(url);
     return (u.pathname + u.search).toLowerCase().includes('.m3u8');
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function isM3U8ContentType(headers?: chrome.webRequest.HttpHeader[]): boolean {
-  const ct = headers?.find(h => h.name.toLowerCase() === 'content-type')?.value?.toLowerCase() ?? '';
+  const ct =
+    headers?.find((h) => h.name.toLowerCase() === 'content-type')?.value?.toLowerCase() ?? '';
   return ct.includes('mpegurl') || ct.includes('m3u8');
 }
 
@@ -57,48 +61,51 @@ export default defineBackground(() => {
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     const tabId: number = sender.tab?.id ?? msg.tabId ?? -1;
 
-    switch (msg.type as string) {
-      case 'M3U8_DETECTED':
+    switch (msg.type) {
+      case MSG.M3U8_DETECTED:
         if (tabId >= 0) addStream(tabId, msg.url as string);
         respond({ ok: true });
         break;
 
-      case 'GET_STREAMS':
+      case MSG.GET_STREAMS:
         respond({ streams: Array.from(store.get(msg.tabId as number)?.values() ?? []) });
         break;
 
-      case 'REMOVE_STREAM':
+      case MSG.REMOVE_STREAM:
         store.get(msg.tabId as number)?.delete(msg.url as string);
         updateBadge(msg.tabId as number);
         respond({ ok: true });
         break;
 
-      case 'CLEAR_STREAMS':
+      case MSG.CLEAR_STREAMS:
         store.delete(msg.tabId as number);
         updateBadge(msg.tabId as number);
         respond({ ok: true });
         break;
 
       // ── Queue messages ────────────────────────────────────────
-      case 'ENQUEUE': {
-        // Queue is persisted via queue.ts; background just triggers processing
+      case MSG.ENQUEUE: {
         processNextQueueItem().catch(() => {});
         respond({ ok: true });
         break;
       }
 
-      case 'QUEUE_ITEM_DONE': {
-        // Download page notifies completion; update item and move to next
-        const { queueId, status, errorMsg } = msg as { queueId: string; status: string; errorMsg?: string };
-        updateQueueItem(queueId, { status: status as 'done' | 'error', errorMsg }).then(() => {
-          processNextQueueItem().catch(() => {});
-        }).catch(() => {});
+      case MSG.QUEUE_ITEM_DONE: {
+        const { queueId, status, errorMsg } = msg as {
+          queueId: string;
+          status: string;
+          errorMsg?: string;
+        };
+        updateQueueItem(queueId, { status: status as 'done' | 'error', errorMsg })
+          .then(() => {
+            processNextQueueItem().catch(() => {});
+          })
+          .catch(() => {});
         respond({ ok: true });
         break;
       }
 
-      case 'QUEUE_PROGRESS': {
-        // Download page reports progress; persist it
+      case MSG.QUEUE_PROGRESS: {
         const { queueId, progress } = msg as { queueId: string; progress: number };
         updateQueueItem(queueId, { progress }).catch(() => {});
         respond({ ok: true });
@@ -109,8 +116,11 @@ export default defineBackground(() => {
   });
 
   // ── Cleanup ──────────────────────────────────────────────────
-  chrome.tabs.onRemoved.addListener(tabId => store.delete(tabId));
+  chrome.tabs.onRemoved.addListener((tabId) => store.delete(tabId));
   chrome.tabs.onUpdated.addListener((tabId, info) => {
-    if (info.status === 'loading' && info.url) { store.delete(tabId); updateBadge(tabId); }
+    if (info.status === 'loading' && info.url) {
+      store.delete(tabId);
+      updateBadge(tabId);
+    }
   });
 });
