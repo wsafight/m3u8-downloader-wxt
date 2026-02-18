@@ -1,5 +1,7 @@
 # M3U8 Stream Downloader
 
+English | [简体中文](./README_CN.md)
+
 A browser extension that automatically detects and downloads HLS/M3U8 video streams from any webpage. Supports encrypted streams, multi-quality selection, fMP4 output, live-stream recording, batch download queue, and in-popup HLS preview.
 
 ---

@@ -1,5 +1,7 @@
 # M3U8 Stream Downloader
 
+[English](./README.md) | 简体中文
+
 浏览器扩展，自动检测网页中的 HLS/M3U8 视频流并下载为本地文件。支持加密流、多清晰度、fMP4、直播录制、批量队列、TS→MP4 重封装、弹窗在线预览。
 
 ---
