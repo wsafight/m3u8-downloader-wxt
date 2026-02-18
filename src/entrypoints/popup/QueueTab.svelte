@@ -1,15 +1,19 @@
 <script lang="ts">
   import type { QueueItem } from '../../lib/types';
   import { clearDoneItems, removeQueueItem } from '../../lib/queue';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let { items = $bindable<QueueItem[]>([]) } = $props();
 
-  const statusLabel: Record<QueueItem['status'], string> = {
-    pending: '等待中',
-    downloading: '下载中',
-    done: '已完成',
-    error: '失败',
-  };
+  function getStatusLabel(status: QueueItem['status']): string {
+    const map: Record<QueueItem['status'], string> = {
+      pending: i18n.t('statusPending'),
+      downloading: i18n.t('statusDownloading'),
+      done: i18n.t('statusDone'),
+      error: i18n.t('statusError'),
+    };
+    return map[status];
+  }
 
   function shortUrl(url: string): string {
     try {
@@ -53,20 +57,20 @@
         opacity=".4"
       /></svg
     >
-    <p>队列为空</p>
-    <span>在检测到的流中点击「加入队列」</span>
+    <p>{i18n.t('queueEmpty')}</p>
+    <span>{i18n.t('queueEmptyHint')}</span>
   </div>
 {:else}
   <div class="toolbar">
-    <span class="count">{items.length} 个任务</span>
+    <span class="count">{items.length} {i18n.t('tasks')}</span>
     {#if hasDone}
-      <button class="clear-btn" onclick={clearDone}>清除已完成</button>
+      <button class="clear-btn" onclick={clearDone}>{i18n.t('clearDone')}</button>
     {/if}
   </div>
   <ul class="list">
     {#each items as item (item.id)}
       <li class="item">
-        <div class="status-chip" data-status={item.status}>{statusLabel[item.status]}</div>
+        <div class="status-chip" data-status={item.status}>{getStatusLabel(item.status)}</div>
         <div class="info">
           <span class="fname" title={item.filename}>{item.filename}</span>
           <span class="url" title={item.url}>{shortUrl(item.url)}</span>

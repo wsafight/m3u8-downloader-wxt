@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LogEntry } from '../../lib/types';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let { logs }: { logs: LogEntry[] } = $props();
 
@@ -16,11 +17,11 @@
 <section class="terminal">
   <div class="terminal-bar">
     <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
-    <span class="terminal-title">日志</span>
+    <span class="terminal-title">{i18n.t('logTitle')}</span>
   </div>
   <div class="terminal-body" bind:this={logEl}>
     {#if logs.length === 0}
-      <span class="log-placeholder">等待操作…</span>
+      <span class="log-placeholder">{i18n.t('logWaiting')}</span>
     {:else}
       {#each logs as log}
         <div class="log-line {log.type}">

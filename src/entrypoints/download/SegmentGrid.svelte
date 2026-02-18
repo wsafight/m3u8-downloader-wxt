@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SegmentStatus } from '../../lib/types';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let {
     segStatuses,
@@ -12,7 +13,13 @@
   } = $props();
 
   const MAX_DISPLAY_DOTS = 400;
+  const VIRTUAL_THRESHOLD = 500;
+  const DOTS_PER_ROW = 40;
+  const DOT_SIZE = 8; // px including gap
+  const CONTAINER_HEIGHT = 200; // px
+  const BUFFER_ROWS = 2;
 
+  // Compute display dots (sampled if too many)
   const displayDots = $derived.by<SegmentStatus[]>(() => {
     if (segStatuses.length === 0) return [];
     if (segStatuses.length <= MAX_DISPLAY_DOTS) return segStatuses;
@@ -26,29 +33,76 @@
     }
     return dots;
   });
+
+  // Virtual scroll state
+  let scrollTop = $state(0);
+  const useVirtual = $derived(displayDots.length > VIRTUAL_THRESHOLD);
+  const totalRows = $derived(Math.ceil(displayDots.length / DOTS_PER_ROW));
+  const totalHeight = $derived(totalRows * DOT_SIZE);
+
+  const visibleRows = $derived.by(() => {
+    if (!useVirtual) return null;
+    const startRow = Math.max(0, Math.floor(scrollTop / DOT_SIZE) - BUFFER_ROWS);
+    const endRow = Math.min(
+      totalRows,
+      Math.ceil((scrollTop + CONTAINER_HEIGHT) / DOT_SIZE) + BUFFER_ROWS,
+    );
+    const rows: Array<{ y: number; dots: SegmentStatus[] }> = [];
+    for (let r = startRow; r < endRow; r++) {
+      const start = r * DOTS_PER_ROW;
+      const end = Math.min(start + DOTS_PER_ROW, displayDots.length);
+      rows.push({ y: r * DOT_SIZE, dots: displayDots.slice(start, end) });
+    }
+    return rows;
+  });
+
+  function onScroll(e: Event) {
+    scrollTop = (e.target as HTMLElement).scrollTop;
+  }
 </script>
 
 {#if displayDots.length > 0}
   <section class="seg-grid-section">
     <div class="seg-grid-header">
-      <span class="seg-grid-title">分片状态</span>
+      <span class="seg-grid-title">{i18n.t('segStatusTitle')}</span>
       <div class="seg-grid-legend">
         {#if failedCount > 0}
-          <span class="legend-item failed"><span class="legend-dot"></span>{failedCount} 失败</span>
+          <span class="legend-item failed"><span class="legend-dot"></span>{failedCount} {i18n.t('legendFailed')}</span>
         {/if}
-        <span class="legend-item ok"><span class="legend-dot"></span>{okCount} 完成</span>
+        <span class="legend-item ok"><span class="legend-dot"></span>{okCount} {i18n.t('legendDone')}</span>
         {#if segStatuses.length > MAX_DISPLAY_DOTS}
-          <span class="legend-scale"
-            >（每点代表 {Math.ceil(segStatuses.length / MAX_DISPLAY_DOTS)} 片）</span
-          >
+          <span class="legend-scale">{i18n.t('legendScaleHint', Math.ceil(segStatuses.length / MAX_DISPLAY_DOTS))}</span>
         {/if}
       </div>
     </div>
-    <div class="seg-grid">
-      {#each displayDots as status}
-        <span class="seg-dot {status}"></span>
-      {/each}
-    </div>
+
+    {#if useVirtual && visibleRows !== null}
+      <!-- Virtual scroll container -->
+      <div
+        class="seg-grid-virtual"
+        style="height: {CONTAINER_HEIGHT}px; overflow-y: auto;"
+        onscroll={onScroll}
+      >
+        <div style="height: {totalHeight}px; position: relative;">
+          {#each visibleRows as row (row.y)}
+            <div
+              class="seg-grid-row"
+              style="position: absolute; top: {row.y}px; left: 0; display: flex; gap: 2px;"
+            >
+              {#each row.dots as status}
+                <span class="seg-dot {status}"></span>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {:else}
+      <div class="seg-grid">
+        {#each displayDots as status}
+          <span class="seg-dot {status}"></span>
+        {/each}
+      </div>
+    {/if}
   </section>
 {/if}
 
@@ -101,6 +155,11 @@
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
+  }
+  .seg-grid-virtual {
+    overflow-y: auto;
+    border-radius: var(--radius, 6px);
+    scrollbar-width: thin;
   }
   .seg-dot {
     width: 6px;

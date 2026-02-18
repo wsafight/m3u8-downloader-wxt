@@ -13,6 +13,11 @@ export default defineContentScript({
   main() {
     const reported = new Set<string>();
 
+    function isStreamUrl(url: string): boolean {
+      const lower = url.toLowerCase();
+      return lower.includes('.m3u8') || lower.includes('.mpd');
+    }
+
     function report(raw: string) {
       let url: string;
       try {
@@ -20,7 +25,7 @@ export default defineContentScript({
       } catch {
         return;
       }
-      if (reported.has(url) || !url.toLowerCase().includes('.m3u8')) return;
+      if (reported.has(url) || !isStreamUrl(url)) return;
       reported.add(url);
       chrome.runtime.sendMessage({ type: MSG.M3U8_DETECTED, url }).catch(() => {});
     }
@@ -34,6 +39,12 @@ export default defineContentScript({
     function checkEl(el: Element) {
       const src = el.getAttribute('src') ?? el.getAttribute('data-src');
       if (src) report(src);
+      // Also detect DASH sources via type attribute
+      const type = el.getAttribute('type') ?? '';
+      if (type.includes('dash+xml') || type.includes('mpd')) {
+        const dashSrc = el.getAttribute('src');
+        if (dashSrc) report(dashSrc);
+      }
     }
 
     const mo = new MutationObserver((muts) => {

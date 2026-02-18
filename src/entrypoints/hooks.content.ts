@@ -13,7 +13,8 @@ export default defineContentScript({
     const EVENT = '__m3u8_detected__';
 
     function dispatch(raw: string) {
-      if (!raw.toLowerCase().includes('.m3u8')) return;
+      const lower = raw.toLowerCase();
+      if (!lower.includes('.m3u8') && !lower.includes('.mpd')) return;
       window.dispatchEvent(new CustomEvent(EVENT, { detail: raw }));
     }
 

@@ -6,19 +6,20 @@ import { MSG } from '../lib/messages';
 const store = new Map<number, Map<string, StreamInfo>>();
 
 // Check pathname AND query string so URLs like ?file=video.m3u8 are not missed
-function isM3U8Url(url: string): boolean {
+function isStreamUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return (u.pathname + u.search).toLowerCase().includes('.m3u8');
+    const combined = (u.pathname + u.search).toLowerCase();
+    return combined.includes('.m3u8') || combined.includes('.mpd');
   } catch {
     return false;
   }
 }
 
-function isM3U8ContentType(headers?: chrome.webRequest.HttpHeader[]): boolean {
+function isStreamContentType(headers?: chrome.webRequest.HttpHeader[]): boolean {
   const ct =
     headers?.find((h) => h.name.toLowerCase() === 'content-type')?.value?.toLowerCase() ?? '';
-  return ct.includes('mpegurl') || ct.includes('m3u8');
+  return ct.includes('mpegurl') || ct.includes('m3u8') || ct.includes('dash+xml');
 }
 
 function addStream(tabId: number, url: string) {
@@ -51,7 +52,7 @@ export default defineBackground(() => {
   chrome.webRequest.onResponseStarted.addListener(
     ({ tabId, url, responseHeaders }) => {
       if (tabId < 0) return;
-      if (isM3U8Url(url) || isM3U8ContentType(responseHeaders)) addStream(tabId, url);
+      if (isStreamUrl(url) || isStreamContentType(responseHeaders)) addStream(tabId, url);
     },
     { urls: ['<all_urls>'] },
     ['responseHeaders'],

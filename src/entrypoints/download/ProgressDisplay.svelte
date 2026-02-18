@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DownloadPhase } from '../../lib/types';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let {
     phase,
@@ -21,26 +22,16 @@
 
   function phaseLabel(p: DownloadPhase): string {
     switch (p) {
-      case 'prefetching':
-        return '解析中…';
-      case 'downloading':
-        return '下载中';
-      case 'merging':
-        return '合并中…';
-      case 'partial':
-        return '部分失败';
-      case 'recording':
-        return '录制中';
-      case 'stopping':
-        return '保存中…';
-      case 'done':
-        return '完成！';
-      case 'error':
-        return '失败';
-      case 'aborted':
-        return '已中止';
-      default:
-        return '';
+      case 'prefetching': return i18n.t('phasePrefetching');
+      case 'downloading': return i18n.t('phaseDownloading');
+      case 'merging':     return i18n.t('phaseMerging');
+      case 'partial':     return i18n.t('phasePartial');
+      case 'recording':   return i18n.t('phaseRecording');
+      case 'stopping':    return i18n.t('phaseStopping');
+      case 'done':        return i18n.t('phaseDone');
+      case 'error':       return i18n.t('phaseError');
+      case 'aborted':     return i18n.t('phaseAborted');
+      default:            return '';
     }
   }
 </script>
@@ -50,7 +41,7 @@
     <span class="progress-pct" class:done={phase === 'done'}>{pct}%</span>
     <div class="progress-right">
       {#if segTotal > 0}
-        <span class="progress-seg">{segDone} / {segTotal} 片</span>
+        <span class="progress-seg">{segDone} / {segTotal} {i18n.t('segs')}</span>
       {:else}
         <span class="progress-seg">{phaseLabel(phase)}</span>
       {/if}

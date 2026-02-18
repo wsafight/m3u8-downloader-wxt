@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DownloadPhase } from '../../lib/types';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let {
     phase,
@@ -44,13 +45,13 @@
       >
         <rect x="6" y="6" width="12" height="12" rx="1" />
       </svg>
-      {phase === 'recording' ? '停止录制' : '中止'}
+      {phase === 'recording' ? i18n.t('btnStopRec') : i18n.t('btnAbort')}
     </button>
     {#if phase === 'downloading' && segDone > 0}
       <button
         class="btn-save-partial"
         onclick={onsavepartial}
-        title="保存当前已完成的 {segDone} 个分片（不中断下载）"
+        title={i18n.t('btnSavePartialTitle', segDone)}
       >
         <svg
           viewBox="0 0 24 24"
@@ -63,7 +64,7 @@
             points="17 21 17 13 7 13 7 21"
           /><polyline points="7 3 7 8 15 8" /></svg
         >
-        保存已完成 ({segDone})
+        {i18n.t('btnSavePartial', segDone)}
       </button>
     {/if}
   {:else if isPartial}
@@ -78,7 +79,7 @@
           stroke-linejoin="round"
           ><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" /></svg
         >
-        重新下载失败片段 ({failedCount})
+        {i18n.t('btnRetryFailed', failedCount)}
       </button>
       <button class="btn-save-partial-main" onclick={onsavepartial} disabled={okCount === 0}>
         <svg
@@ -92,10 +93,10 @@
             points="17 21 17 13 7 13 7 21"
           /><polyline points="7 3 7 8 15 8" /></svg
         >
-        保存已完成片段 ({okCount})
+        {i18n.t('btnSaveComplete', okCount)}
       </button>
     </div>
-    <button class="btn-reset-small" onclick={onreset}>重新开始</button>
+    <button class="btn-reset-small" onclick={onreset}>{i18n.t('btnReset')}</button>
   {:else}
     <button
       class="btn-main"
@@ -113,7 +114,7 @@
           stroke-width="2.5"
           stroke-linecap="round"><path d="M20 6L9 17l-5-5" /></svg
         >
-        下载完成
+        {i18n.t('btnDone')}
       {:else if phase === 'error'}
         <svg
           viewBox="0 0 24 24"
@@ -122,7 +123,7 @@
           stroke-width="2.5"
           stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg
         >
-        重试
+        {i18n.t('btnRetry')}
       {:else if phase === 'aborted'}
         <svg
           viewBox="0 0 24 24"
@@ -131,7 +132,7 @@
           stroke-width="2.5"
           stroke-linecap="round"><path d="M12 3v13M5 13l7 7 7-7" /><path d="M3 20h18" /></svg
         >
-        重新下载
+        {i18n.t('freshDownload')}
       {:else if isLive}
         <svg
           viewBox="0 0 24 24"
@@ -146,7 +147,7 @@
             opacity=".5"
           /></svg
         >
-        开始录制
+        {i18n.t('btnStartRec')}
       {:else}
         <svg
           viewBox="0 0 24 24"
@@ -155,7 +156,7 @@
           stroke-width="2.5"
           stroke-linecap="round"><path d="M12 3v13M5 13l7 7 7-7" /><path d="M3 20h18" /></svg
         >
-        开始下载
+        {i18n.t('btnStartDownload')}
       {/if}
     </button>
   {/if}

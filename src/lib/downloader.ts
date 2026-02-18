@@ -1,6 +1,7 @@
 import { M3U8Parser } from './m3u8-parser';
+import { MpdParser } from './mpd-parser';
 import { remuxTsToMp4 } from './remux';
-import type { ByteRange, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
+import type { ByteRange, DownloadCheckpoint, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
 
 export interface DownloaderOptions {
   concurrency?: number;
@@ -8,6 +9,7 @@ export interface DownloaderOptions {
   startIndex?: number; // inclusive, for range downloads
   endIndex?: number; // inclusive, for range downloads
   convertToMp4?: boolean; // remux TS → fMP4 after download
+  audioTrackUrl?: string; // optional separate audio track URL to mux in
   onProgress?: (
     ratio: number,
     done: number,
@@ -33,6 +35,15 @@ export class PartialDownloadError extends Error {
   }
 }
 
+class HttpError extends Error {
+  retryAfterMs?: number;
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
+    this.name = 'HttpError';
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 const MERGE_BATCH = 100;
 
 export class M3U8Downloader {
@@ -41,6 +52,7 @@ export class M3U8Downloader {
   private startIndex: number | undefined;
   private endIndex: number | undefined;
   private convertToMp4: boolean;
+  private audioTrackUrl: string | undefined;
   private onProgress: NonNullable<DownloaderOptions['onProgress']>;
   private onStatus: NonNullable<DownloaderOptions['onStatus']>;
   private onQualityChoice: DownloaderOptions['onQualityChoice'];
@@ -48,6 +60,7 @@ export class M3U8Downloader {
   private _aborted = false;
   private _abortController: AbortController | null = null;
   private _keyCache = new Map<string, CryptoKey>();
+  private _initCache = new Map<string, ArrayBuffer>();
   // Speed tracking
   private _downloadedBytes = 0;
   private _speedSamples: { t: number; cumBytes: number }[] = [];
@@ -66,6 +79,7 @@ export class M3U8Downloader {
     this.startIndex = opts.startIndex;
     this.endIndex = opts.endIndex;
     this.convertToMp4 = opts.convertToMp4 ?? false;
+    this.audioTrackUrl = opts.audioTrackUrl;
     this.onProgress = opts.onProgress ?? (() => {});
     this.onStatus = opts.onStatus ?? (() => {});
     this.onQualityChoice = opts.onQualityChoice;
@@ -93,22 +107,36 @@ export class M3U8Downloader {
     this._aborted = false;
     this._abortController = new AbortController();
     this._keyCache.clear();
+    this._initCache.clear();
     this._downloadedBytes = 0;
     this._speedSamples = [];
 
     this.onStatus('正在获取播放列表…');
     const text = await this.retry(() => this.fetchText(m3u8Url));
-    let playlist = M3U8Parser.parse(text, m3u8Url);
+    const isMpd = this.detectMpd(m3u8Url, text);
+    let playlist = isMpd ? MpdParser.parse(text, m3u8Url) : M3U8Parser.parse(text, m3u8Url);
 
     // ── Master playlist: quality selection ────────────────────────
     if (playlist.type === 'master') {
       if (playlist.streams.length === 0) throw new Error('Master playlist 中没有可用流');
+      const masterMediaTracks = playlist.mediaTracks;
       const chosen = this.onQualityChoice
         ? await this.onQualityChoice(playlist.streams)
         : playlist.streams[0];
       const label = chosen.resolution || `${Math.round(chosen.bandwidth / 1000)}k`;
       this.onStatus(`获取媒体流 (${label})…`);
-      playlist = M3U8Parser.parse(await this.retry(() => this.fetchText(chosen.url)), chosen.url);
+      if (isMpd) {
+        // For MPD masters, the stream URL is the media URL directly
+        const mediaText = await this.retry(() => this.fetchText(chosen.url));
+        playlist = MpdParser.parse(mediaText, chosen.url);
+      } else {
+        const subtitleTracks = masterMediaTracks.filter((t) => t.type === 'SUBTITLES');
+        playlist = M3U8Parser.parse(
+          await this.retry(() => this.fetchText(chosen.url)),
+          chosen.url,
+          subtitleTracks,
+        );
+      }
     }
 
     if (playlist.type !== 'media' || playlist.segments.length === 0) {
@@ -132,12 +160,22 @@ export class M3U8Downloader {
     isFmp4 = false,
   ): Promise<DownloadResult> {
     if (!this._abortController) this._abortController = new AbortController();
+    // Ensure key cache is clean when called directly without download()
+    if (this._keyCache.size === 0 && this._initCache.size === 0) {
+      this._keyCache.clear();
+    }
 
-    // ── fMP4 init segment ──────────────────────────────────────────
+    // ── fMP4 init segment (with cache) ────────────────────────────
     let initBuffer: ArrayBuffer | null = null;
     if (initSegment) {
-      this.onStatus('获取初始化分片…');
-      initBuffer = await this.retry(() => this.fetchBinary(initSegment.url, initSegment.byteRange));
+      const cached = this._initCache.get(initSegment.url);
+      if (cached) {
+        initBuffer = cached;
+      } else {
+        this.onStatus('获取初始化分片…');
+        initBuffer = await this.retry(() => this.fetchBinary(initSegment.url, initSegment.byteRange));
+        this._initCache.set(initSegment.url, initBuffer);
+      }
     }
 
     const total = segments.length;
@@ -320,14 +358,16 @@ export class M3U8Downloader {
     } else if (this.convertToMp4) {
       // TS → fMP4 remux
       this.onStatus('正在转换为 MP4…', 'info');
-      const tsBlob = new Blob(parts, { type: 'video/mp2t' });
+      let tsBlob: Blob | null = new Blob(parts, { type: 'video/mp2t' });
       try {
         finalBlob = await remuxTsToMp4(tsBlob);
+        tsBlob = null; // release reference
         ext = 'mp4';
         this.onStatus('MP4 转换完成', 'ok');
       } catch (e) {
         this.onStatus(`MP4 转换失败（${(e as Error).message}），将保存为 .ts`, 'warn');
-        finalBlob = tsBlob;
+        finalBlob = tsBlob!;
+        tsBlob = null;
         ext = 'ts';
       }
     } else {
@@ -387,7 +427,12 @@ export class M3U8Downloader {
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
         lastErr = e;
-        if (i < this.retries - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+        if (i < this.retries - 1) {
+          // 429: honour Retry-After header if present
+          const retryAfterMs = (e as HttpError).retryAfterMs;
+          const delay = retryAfterMs != null ? retryAfterMs : 800 * (i + 1);
+          await new Promise((r) => setTimeout(r, delay));
+        }
       }
     }
     throw lastErr;
@@ -401,7 +446,7 @@ export class M3U8Downloader {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
       throw new Error(`网络请求失败，请检查连接（${this.shortUrl(url)}）`);
     }
-    if (!res.ok) throw new Error(this.classifyHttpError(res.status, url));
+    if (!res.ok) throw this.classifyHttpError(res, url);
     return res.text();
   }
 
@@ -420,21 +465,40 @@ export class M3U8Downloader {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
       throw new Error(`网络请求失败，请检查连接（${this.shortUrl(url)}）`);
     }
-    if (!res.ok && res.status !== 206) throw new Error(this.classifyHttpError(res.status, url));
+    if (!res.ok && res.status !== 206) throw this.classifyHttpError(res, url);
     const buf = await res.arrayBuffer();
     this._downloadedBytes += buf.byteLength;
     this._recordSpeedSample();
     return buf;
   }
 
-  private classifyHttpError(status: number, url: string): string {
+  private classifyHttpError(res: Response, url: string): HttpError {
+    const { status } = res;
     const u = this.shortUrl(url);
     if (status === 403)
-      return `403 拒绝访问 — 该流可能需要登录或 Referer，请刷新视频页面后重新触发下载（${u}）`;
-    if (status === 404) return `404 未找到 — 链接已失效或分片已过期（${u}）`;
-    if (status === 429) return `429 请求过于频繁 — 尝试降低并发数后重试（${u}）`;
-    if (status >= 500) return `${status} 服务器错误 — 稍后重试（${u}）`;
-    return `HTTP ${status}（${u}）`;
+      return new HttpError(`403 拒绝访问 — 该流可能需要登录或 Referer，请刷新视频页面后重新触发下载（${u}）`);
+    if (status === 404) return new HttpError(`404 未找到 — 链接已失效或分片已过期（${u}）`);
+    if (status === 429) {
+      const retryAfterHeader = res.headers.get('Retry-After');
+      let retryAfterMs: number | undefined;
+      if (retryAfterHeader) {
+        const seconds = parseFloat(retryAfterHeader);
+        if (!isNaN(seconds)) {
+          retryAfterMs = Math.min(seconds * 1000, 60_000);
+        }
+      }
+      return new HttpError(`429 请求过于频繁 — 尝试降低并发数后重试（${u}）`, retryAfterMs);
+    }
+    if (status >= 500) return new HttpError(`${status} 服务器错误 — 稍后重试（${u}）`);
+    return new HttpError(`HTTP ${status}（${u}）`);
+  }
+
+  private detectMpd(url: string, text: string): boolean {
+    try {
+      const pathname = new URL(url).pathname.toLowerCase();
+      if (pathname.endsWith('.mpd')) return true;
+    } catch {}
+    return text.trimStart().startsWith('<?xml') && text.includes('<MPD');
   }
 
   private shortUrl(url: string): string {

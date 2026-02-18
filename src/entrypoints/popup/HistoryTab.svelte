@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { HistoryEntry } from '../../lib/types';
   import { clearHistory, removeHistoryEntry } from '../../lib/history';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let { entries = $bindable<HistoryEntry[]>([]) } = $props();
 
@@ -11,10 +12,10 @@
 
   function timeAgo(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
-    if (s < 60) return `${s}s ago`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-    return `${Math.floor(s / 86400)}d ago`;
+    if (s < 60) return i18n.t('timeAgoSec', s);
+    if (s < 3600) return i18n.t('timeAgoMin', Math.floor(s / 60));
+    if (s < 86400) return i18n.t('timeAgoHour', Math.floor(s / 3600));
+    return i18n.t('timeAgoDay', Math.floor(s / 86400));
   }
 
   async function remove(id: string) {
@@ -25,6 +26,24 @@
   async function clear() {
     await clearHistory();
     entries = [];
+  }
+
+  function openDomain(domain: string) {
+    chrome.tabs.create({ url: `https://${domain}` });
+  }
+
+  function exportHistory() {
+    const json = JSON.stringify(entries, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `m3u8-history-${new Date().toISOString().slice(0, 10)}.json`,
+    });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5_000);
   }
 </script>
 
@@ -46,12 +65,15 @@
         opacity=".4"
       /></svg
     >
-    <p>暂无下载记录</p>
+    <p>{i18n.t('historyEmpty')}</p>
   </div>
 {:else}
   <div class="toolbar">
-    <span class="count">{entries.length} 条记录</span>
-    <button class="clear-btn" onclick={clear}>清空全部</button>
+    <span class="count">{entries.length} {i18n.t('records')}</span>
+    <div class="toolbar-actions">
+      <button class="export-btn" onclick={exportHistory}>{i18n.t('exportHistory')}</button>
+      <button class="clear-btn" onclick={clear}>{i18n.t('clearHistory')}</button>
+    </div>
   </div>
   <ul class="list">
     {#each entries as e (e.id)}
@@ -61,7 +83,10 @@
         </div>
         <div class="info">
           <span class="name" title={e.filename}>{e.filename}</span>
-          <span class="meta">{e.domain} · {formatBytes(e.bytes)} · {timeAgo(e.doneAt)}</span>
+          <span class="meta">
+            <button class="domain-link" onclick={() => openDomain(e.domain)} title="在新标签打开">{e.domain}</button>
+            · {formatBytes(e.bytes)}{e.segments > 0 ? ` · ${e.segments} ${i18n.t('segs')}` : ''} · {timeAgo(e.doneAt)}
+          </span>
         </div>
         <button class="rm" onclick={() => remove(e.id)} title="删除">×</button>
       </li>
@@ -92,6 +117,26 @@
     font-size: 11px;
     color: var(--text-3);
   }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .export-btn {
+    font-size: 11px;
+    color: var(--accent);
+    background: none;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+  }
+  .export-btn:hover {
+    background: var(--accent-glow);
+    border-color: var(--border-hi);
+  }
   .clear-btn {
     font-size: 11px;
     color: var(--error);
@@ -106,6 +151,19 @@
   .clear-btn:hover {
     background: #f871711a;
     border-color: #f8717130;
+  }
+  .domain-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .domain-link:hover {
+    opacity: 0.8;
   }
 
   .list {

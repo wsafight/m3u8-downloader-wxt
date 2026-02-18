@@ -23,6 +23,8 @@ export class LiveRecorder {
   private _durationSec = 0;
   private _bufferedBytes = 0;
   private readonly FLUSH_EVERY = 100;
+  // Dynamic polling: tracks consecutive empty polls
+  private _emptyPollCount = 0;
 
   constructor(opts: LiveRecorderOptions = {}) {
     this.concurrency = opts.concurrency ?? 4;
@@ -38,6 +40,7 @@ export class LiveRecorder {
 
   async record(m3u8Url: string): Promise<void> {
     const seen = new Set<string>();
+    this._emptyPollCount = 0;
     this.onStatus('开始录制直播流…', 'ok');
 
     while (!this._stopping) {
@@ -68,10 +71,47 @@ export class LiveRecorder {
       const playlist = M3U8Parser.parse(text, m3u8Url);
       if (playlist.type !== 'media') break;
 
+      const targetDuration = playlist.targetDuration || 5;
+
+      if (playlist.isEndList) {
+        // Process any new segments before exiting
+        for (const seg of playlist.segments.filter((s) => !seen.has(s.url))) {
+          seen.add(seg.url);
+          const buf = await this._downloadSegment(seg);
+          if (!buf) continue;
+          this._pending.push(buf);
+          this._segCount++;
+          this._durationSec += seg.duration;
+          this._bufferedBytes += buf.byteLength;
+          this.onSegmentDone(this._segCount, this._durationSec, this._bufferedBytes);
+          if (this._pending.length >= this.FLUSH_EVERY) this._flush();
+        }
+        this.onStatus('直播流已结束', 'ok');
+        break;
+      }
+
       const newSegs = playlist.segments.filter((s) => !seen.has(s.url));
+
+      if (newSegs.length === 0) {
+        // No new segments — back off exponentially (max targetDuration)
+        this._emptyPollCount++;
+        if (this._stopping) break;
+        const backoff = Math.min(
+          (targetDuration * 500) * Math.pow(2, this._emptyPollCount - 1),
+          targetDuration * 1000,
+        );
+        await this._wait(backoff);
+        continue;
+      }
+
+      // Got new segments — reset backoff
+      this._emptyPollCount = 0;
+
       for (const seg of newSegs) {
         if (this._stopping) break;
         seen.add(seg.url);
+        // NOTE: segment fetch does NOT use _abortController — we allow in-flight
+        // segments to complete so no data is lost when stop() is called.
         const buf = await this._downloadSegment(seg);
         if (!buf) continue;
         this._pending.push(buf);
@@ -82,14 +122,10 @@ export class LiveRecorder {
         if (this._pending.length >= this.FLUSH_EVERY) this._flush();
       }
 
-      if (playlist.isEndList) {
-        this.onStatus('直播流已结束', 'ok');
-        break;
-      }
       if (this._stopping) break;
 
       // Wait half targetDuration before re-polling (HLS spec recommendation)
-      await this._wait((playlist.targetDuration || 5) * 500);
+      await this._wait(targetDuration * 500);
     }
   }
 
@@ -123,6 +159,9 @@ export class LiveRecorder {
               Range: `bytes=${seg.byteRange.offset}-${seg.byteRange.offset + seg.byteRange.length - 1}`,
             }
           : {};
+        // Intentionally NOT using _abortController.signal here so that
+        // in-flight segment downloads complete even after stop() is called,
+        // preventing data loss at the end of a recording session.
         const res = await fetch(seg.url, { credentials: 'include', headers });
         if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
         return await res.arrayBuffer();

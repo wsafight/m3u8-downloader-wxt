@@ -32,3 +32,5 @@ pnpm-debug.log*
 
 # Zip artifacts
 *.zip
+
+.claude/

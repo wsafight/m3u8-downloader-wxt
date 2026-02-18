@@ -5,6 +5,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.0] - 2026-02-19
+
+### Feature
+
+- **DASH / MPD support** (`src/lib/mpd-parser.ts` — new, 328 lines):
+  - Minimal MPEG-DASH parser covering `SegmentTemplate` (`$Number$` / `$Time$` / `$Bandwidth$` tokens) and `SegmentList` formats.
+  - Output is fully compatible with the existing `MasterPlaylist` / `MediaPlaylist` types, so the downloader transparently handles both HLS and DASH streams.
+  - `M3U8Downloader.download()` auto-detects MPD vs M3U8 by inspecting the URL and content; no caller changes required.
+
+- **Internationalisation** (`src/lib/i18n.svelte.ts` — new, 270 lines):
+  - Reactive Svelte 5 i18n store with full `zh` and `en` translations covering all UI strings across popup, download page, and settings.
+  - `i18n.t(key, ...args)` template helper; language stored in `UserSettings.language` and persisted to `chrome.storage.sync`.
+  - Language toggle (ZH / EN) available in both the download page header and the new Settings tab.
+
+- **Settings tab** (`src/entrypoints/popup/SettingsTab.svelte` — new, 393 lines):
+  - Dedicated settings panel in the popup with sections for Language, Download, Behaviour, and About.
+  - Controls: language toggle, concurrency slider (1–16), retries slider (1–10), "Convert to MP4" checkbox, "Auto-enqueue" checkbox.
+  - **Reset to defaults** button restores all settings via the new `resetSettings()` helper.
+
+- **Download resume / checkpoint** (`src/entrypoints/download/App.svelte`):
+  - Progress is checkpointed to `chrome.storage.local` every 10 completed segments.
+  - On next open the page detects an existing checkpoint and offers to resume, skipping already-downloaded segments.
+  - Checkpoint is cleared on successful completion or manual dismissal.
+
+- **Batch stream selection** (`src/entrypoints/popup/App.svelte`):
+  - Select-all / deselect-all toggle in the stream list header.
+  - "Batch enqueue" button adds all selected streams to the queue at once.
+
+- **Audio track muxing** (`src/lib/downloader.ts`):
+  - `M3U8Downloader` accepts an optional `audioTrackUrl` to download a separate audio rendition and mux it alongside the video segments.
+
+### Fixed / Improved
+
+- **HTTP error classification** (`src/lib/downloader.ts`):
+  - Introduced `HttpError` with an optional `retryAfterMs` field.
+  - `classifyHttpError()` emits actionable messages for 403 (access denied / login required), 404 (segment expired), 429 (rate limited), and 5xx (server error).
+  - 429 responses honour the `Retry-After` header (capped at 60 s) instead of the fixed back-off, stored in `HttpError.retryAfterMs`.
+
+### Types
+
+- **`DownloadCheckpoint`** — new interface (`url`, `filename`, `segmentUrls`, `doneIndices`, `savedAt`).
+- **`MediaTrack`** — new interface (`type: 'SUBTITLES' | 'AUDIO'`, `name`, `language`, `uri`).
+- **`AppMessage`** union type moved to `src/lib/types.ts` (was inline strings).
+- `MasterPlaylist` gains `mediaTracks: MediaTrack[]`; `MediaPlaylist` gains optional `subtitleTracks?: MediaTrack[]`.
+
+### Settings
+
+- `UserSettings` gains three new fields: `language: Lang` (default `'zh'`), `retries: number` (default `3`), `autoEnqueue: boolean` (default `false`).
+- New `resetSettings()` export in `src/lib/settings.ts`.
+
+### Tests
+
+- **`src/lib/downloader.test.ts`** (329 lines) — new test suite covering:
+  - HTTP error classification (403, 404, 500, 206 partial-content)
+  - 429 `Retry-After` wait and 60 s cap
+  - `_calcSpeed()` edge cases
+  - `pool()` concurrency and early-abort behaviour
+  - `PartialDownloadError` shape
+  - `downloadSegments()` partial-failure path
+  - `savePartial()` empty-segment guard
+  - `abort()` state and rejection
+  - `decryptAES128()` correctness
+  - fMP4 init-segment cache (fetched only once for duplicate URLs)
+
+---
+
 ## [0.2.0] - 2026-02-18
 
 ### Refactor

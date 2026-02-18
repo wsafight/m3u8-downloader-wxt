@@ -10,3 +10,5 @@ export const MSG = {
 } as const;
 
 export type MessageType = (typeof MSG)[keyof typeof MSG];
+
+export type { AppMessage } from './types';

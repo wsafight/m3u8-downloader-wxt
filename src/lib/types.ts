@@ -40,6 +40,7 @@ export interface StreamDef {
 export interface MasterPlaylist {
   type: 'master';
   streams: StreamDef[];
+  mediaTracks: MediaTrack[];
 }
 
 export interface MediaPlaylist {
@@ -51,6 +52,7 @@ export interface MediaPlaylist {
   isLive: boolean;
   initSegment?: InitSegment;
   isFmp4: boolean;
+  subtitleTracks?: MediaTrack[];
 }
 
 export type Playlist = MasterPlaylist | MediaPlaylist;
@@ -100,4 +102,34 @@ export interface QueueItem {
   progress: number; // 0–1
   addedAt: number;
   errorMsg?: string;
+}
+
+// ── Typed Message Union ───────────────────────────────────────────
+
+export type AppMessage =
+  | { type: 'M3U8_DETECTED'; url: string; tabId?: number }
+  | { type: 'GET_STREAMS'; tabId: number }
+  | { type: 'REMOVE_STREAM'; tabId: number; url: string }
+  | { type: 'CLEAR_STREAMS'; tabId: number }
+  | { type: 'ENQUEUE' }
+  | { type: 'QUEUE_ITEM_DONE'; queueId: string; status: 'done' | 'error'; errorMsg?: string }
+  | { type: 'QUEUE_PROGRESS'; queueId: string; progress: number };
+
+// ── Media Tracks (Subtitles / Audio) ─────────────────────────────
+
+export interface MediaTrack {
+  type: 'SUBTITLES' | 'AUDIO';
+  name: string;
+  language?: string;
+  uri: string;
+}
+
+// ── Download Checkpoint (for resume) ─────────────────────────────
+
+export interface DownloadCheckpoint {
+  url: string;
+  filename: string;
+  segmentUrls: string[];
+  doneIndices: number[];
+  savedAt: number;
 }

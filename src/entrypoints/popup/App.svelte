@@ -3,11 +3,15 @@
   import type { HistoryEntry, QueueItem, StreamInfo } from '../../lib/types';
   import { getHistory } from '../../lib/history';
   import { enqueueItem, getQueue } from '../../lib/queue';
+  import { loadSettings } from '../../lib/settings';
+  import type { UserSettings } from '../../lib/settings';
   import { MSG } from '../../lib/messages';
+  import { i18n } from '../../lib/i18n.svelte';
   import HistoryTab from './HistoryTab.svelte';
   import QueueTab from './QueueTab.svelte';
+  import SettingsTab from './SettingsTab.svelte';
 
-  type Tab = 'streams' | 'queue' | 'history';
+  type Tab = 'streams' | 'queue' | 'history' | 'settings';
 
   let streams = $state<StreamInfo[]>([]);
   let tabId = $state(-1);
@@ -16,10 +20,16 @@
   let activeTab = $state<Tab>('streams');
   let history = $state<HistoryEntry[]>([]);
   let queue = $state<QueueItem[]>([]);
+  let settings = $state<UserSettings>({
+    concurrency: 6, convertToMp4: false, language: 'zh', retries: 3, autoEnqueue: false,
+  });
 
   onMount(async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     tabId = tab?.id ?? -1;
+    const s = await loadSettings();
+    settings = s;
+    i18n.lang = s.language;
     await refresh();
     loading = false;
   });
@@ -81,9 +91,9 @@
 
   function timeAgo(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
-    if (s < 60) return `${s}s ago`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    return `${Math.floor(s / 3600)}h ago`;
+    if (s < 60) return i18n.t('timeAgoSec', s);
+    if (s < 3600) return i18n.t('timeAgoMin', Math.floor(s / 60));
+    return i18n.t('timeAgoHour', Math.floor(s / 3600));
   }
 
   function guessFilename(url: string): string {
@@ -105,6 +115,38 @@
   }
 
   const pendingCount = $derived(queue.filter((i) => i.status === 'pending').length);
+
+  // ── Batch selection ───────────────────────────────────────────────
+  let selectedUrls = $state<Set<string>>(new Set());
+  const allSelected = $derived(
+    streams.length > 0 && streams.every((s) => selectedUrls.has(s.url)),
+  );
+
+  function toggleSelect(url: string) {
+    const next = new Set(selectedUrls);
+    if (next.has(url)) next.delete(url);
+    else next.add(url);
+    selectedUrls = next;
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      selectedUrls = new Set();
+    } else {
+      selectedUrls = new Set(streams.map((s) => s.url));
+    }
+  }
+
+  async function addSelectedToQueue() {
+    for (const url of selectedUrls) {
+      const fn = guessFilename(url);
+      await enqueueItem(url, fn);
+    }
+    await chrome.runtime.sendMessage({ type: MSG.ENQUEUE });
+    queue = await getQueue();
+    selectedUrls = new Set();
+    activeTab = 'queue';
+  }
 
   // ── Stream Preview ────────────────────────────────────────────────
   let previewUrl = $state<string | null>(null);
@@ -166,36 +208,56 @@
       <span class="logo-text">M3U8 <em>Downloader</em></span>
     </div>
     {#if activeTab === 'streams'}
-      <button class="icon-btn" onclick={clearAll} disabled={streams.length === 0} title="清空列表">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-        >
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-          <path d="M10 11v6M14 11v6" />
-          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
-        </svg>
-      </button>
+      <div class="header-actions">
+        {#if streams.length > 0}
+          <button class="icon-btn select-all-btn" onclick={toggleSelectAll} title={allSelected ? i18n.t('cancelSelectAll') : i18n.t('selectAll')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              {#if allSelected}
+                <rect x="3" y="3" width="18" height="18" rx="2" fill="var(--accent)" stroke="var(--accent)"/>
+                <path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.5"/>
+              {:else}
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              {/if}
+            </svg>
+          </button>
+        {/if}
+        <button class="icon-btn" onclick={clearAll} disabled={streams.length === 0} title={i18n.t('clearAll')}>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+          </svg>
+        </button>
+      </div>
     {/if}
   </header>
 
   <!-- Tab Bar -->
   <nav class="tabs">
     <button class="tab" class:active={activeTab === 'streams'} onclick={() => switchTab('streams')}>
-      检测到的流
+      {i18n.t('tabStreams')}
       {#if streams.length > 0}<span class="tab-badge">{streams.length}</span>{/if}
     </button>
     <button class="tab" class:active={activeTab === 'queue'} onclick={() => switchTab('queue')}>
-      下载队列
+      {i18n.t('tabQueue')}
       {#if pendingCount > 0}<span class="tab-badge">{pendingCount}</span>{/if}
     </button>
-    <button class="tab" class:active={activeTab === 'history'} onclick={() => switchTab('history')}
-      >历史记录</button
-    >
+    <button class="tab" class:active={activeTab === 'history'} onclick={() => switchTab('history')}>
+      {i18n.t('tabHistory')}
+    </button>
+    <button class="tab tab-icon" class:active={activeTab === 'settings'} onclick={() => switchTab('settings')} title={i18n.t('tabSettings')}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+      </svg>
+    </button>
   </nav>
 
   <!-- Stream List -->
@@ -238,15 +300,33 @@
               <circle cx="32" cy="32" r="3" fill="var(--accent)" />
             </svg>
           </div>
-          <p class="empty-title">暂未检测到视频流</p>
-          <p class="empty-hint">播放视频后会自动出现在这里</p>
+          <p class="empty-title">{i18n.t('streamEmpty')}</p>
+          <p class="empty-hint">{i18n.t('streamEmptyHint')}</p>
         </div>
       {:else}
         <ul class="stream-list">
           {#each streams as stream, i (stream.url)}
             {@const info = parseUrl(stream.url)}
-            <li class="stream-card" style="animation-delay: {i * 40}ms">
+            <li class="stream-card" class:selected={selectedUrls.has(stream.url)} style="animation-delay: {i * 40}ms">
               <div class="stream-row">
+                <button
+                  class="stream-checkbox"
+                  class:checked={selectedUrls.has(stream.url)}
+                  onclick={() => toggleSelect(stream.url)}
+                  title={selectedUrls.has(stream.url) ? '取消选择' : '选择'}
+                  aria-label="select stream"
+                >
+                  {#if selectedUrls.has(stream.url)}
+                    <svg viewBox="0 0 16 16" fill="none">
+                      <rect width="16" height="16" rx="3" fill="var(--accent)"/>
+                      <path d="M4 8l2.5 2.5L12 5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {:else}
+                    <svg viewBox="0 0 16 16" fill="none">
+                      <rect x="0.5" y="0.5" width="15" height="15" rx="2.5" stroke="var(--border-hi)"/>
+                    </svg>
+                  {/if}
+                </button>
                 <div class="stream-thumb">
                   <svg
                     viewBox="0 0 24 24"
@@ -271,7 +351,7 @@
                     class="btn-preview"
                     class:active={previewUrl === stream.url}
                     onclick={() => togglePreview(stream.url)}
-                    title={previewUrl === stream.url ? '关闭预览' : '在线预览'}
+                    title={previewUrl === stream.url ? i18n.t('stopPreview') : i18n.t('preview')}
                   >
                     {#if previewUrl === stream.url}
                       <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -283,7 +363,7 @@
                       </svg>
                     {/if}
                   </button>
-                  <button class="btn-dl" onclick={() => openDownload(stream.url)} title="直接下载">
+                  <button class="btn-dl" onclick={() => openDownload(stream.url)} title={i18n.t('directDownload')}>
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -294,7 +374,7 @@
                       <path d="M12 3v13M5 13l7 7 7-7" /><path d="M3 20h18" />
                     </svg>
                   </button>
-                  <button class="btn-queue" onclick={() => addToQueue(stream.url)} title="加入队列">
+                  <button class="btn-queue" onclick={() => addToQueue(stream.url)} title={i18n.t('addToQueue')}>
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -305,7 +385,7 @@
                       <path d="M3 6h18M3 12h18M3 18h12" /><path d="M19 15l3 3-3 3" />
                     </svg>
                   </button>
-                  <button class="btn-rm" onclick={() => removeStream(stream.url)} title="移除">
+                  <button class="btn-rm" onclick={() => removeStream(stream.url)} title={i18n.t('removeStream')}>
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -336,6 +416,16 @@
       {/if}
     </main>
 
+    <!-- Batch queue button -->
+    {#if selectedUrls.size > 0}
+      <div class="batch-bar">
+        <span class="batch-info">{i18n.t('selected')} {selectedUrls.size} {i18n.t('streams')}</span>
+        <button class="btn-batch-queue" onclick={addSelectedToQueue}>
+          {i18n.t('batchQueue')} ({selectedUrls.size})
+        </button>
+      </div>
+    {/if}
+
     <!-- Manual Input -->
     <footer>
       <div class="input-wrap">
@@ -353,7 +443,7 @@
         <input
           class="url-input"
           bind:value={manual}
-          placeholder="手动粘贴 M3U8 地址…"
+          placeholder={i18n.t('manualUrl')}
           spellcheck="false"
           onkeydown={(e) => e.key === 'Enter' && startManual()}
         />
@@ -373,8 +463,10 @@
     </footer>
   {:else if activeTab === 'queue'}
     <main><QueueTab bind:items={queue} /></main>
-  {:else}
+  {:else if activeTab === 'history'}
     <main><HistoryTab bind:entries={history} /></main>
+  {:else}
+    <main><SettingsTab bind:settings={settings} /></main>
   {/if}
 </div>
 
@@ -476,6 +568,15 @@
   .tab.active {
     color: var(--accent);
     border-color: var(--accent);
+  }
+
+  .tab-icon {
+    flex: 0 0 36px;
+    padding: 0;
+  }
+  .tab-icon svg {
+    width: 14px;
+    height: 14px;
   }
 
   .tab-badge {
@@ -788,5 +889,68 @@
   .btn-go:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  /* ── Header actions ── */
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .select-all-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  /* ── Stream checkbox ── */
+  .stream-checkbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .stream-checkbox svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .stream-card.selected {
+    border-color: var(--accent);
+    background: var(--surface-3);
+  }
+
+  /* ── Batch bar ── */
+  .batch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border);
+    animation: fadeSlideIn 0.2s ease both;
+    flex-shrink: 0;
+  }
+  .batch-info {
+    font-size: 11px;
+    color: var(--text-2);
+  }
+  .btn-batch-queue {
+    padding: 5px 14px;
+    border-radius: var(--radius);
+    background: var(--accent-grad);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px #5b9df630;
+    transition: opacity var(--transition);
+  }
+  .btn-batch-queue:hover {
+    opacity: 0.85;
   }
 </style>

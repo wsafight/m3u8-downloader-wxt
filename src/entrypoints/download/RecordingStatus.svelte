@@ -1,5 +1,6 @@
 <script lang="ts">
   import { M3U8Parser } from '../../lib/m3u8-parser';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let {
     recCount,
@@ -13,9 +14,9 @@
 </script>
 
 <section class="rec-status">
-  <span class="rec-indicator"><span class="rec-dot-anim"></span>录制中</span>
+  <span class="rec-indicator"><span class="rec-dot-anim"></span>{i18n.t('phaseRecording')}</span>
   <span
-    >{recCount} 片 · {M3U8Parser.formatDuration(recDurSec)} · {(recBytes / 1024 / 1024).toFixed(1)} MB</span
+    >{recCount} {i18n.t('segs')} · {M3U8Parser.formatDuration(recDurSec)} · {(recBytes / 1024 / 1024).toFixed(1)} MB</span
   >
 </section>
 

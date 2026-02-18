@@ -4,9 +4,11 @@
   import { M3U8Downloader, PartialDownloadError } from '../../lib/downloader';
   import { LiveRecorder } from '../../lib/live-recorder';
   import { loadSettings, saveSettings } from '../../lib/settings';
+  import type { Lang } from '../../lib/i18n.svelte';
+  import { i18n } from '../../lib/i18n.svelte';
   import { addHistoryEntry } from '../../lib/history';
   import { MSG } from '../../lib/messages';
-  import type { DownloadPhase, LogEntry, Segment, SegmentStatus, StreamDef } from '../../lib/types';
+  import type { DownloadCheckpoint, DownloadPhase, LogEntry, MediaTrack, Segment, SegmentStatus, StreamDef } from '../../lib/types';
   import SegmentRangeSlider from './SegmentRangeSlider.svelte';
   import LogTerminal from './LogTerminal.svelte';
   import SegmentGrid from './SegmentGrid.svelte';
@@ -24,6 +26,7 @@
   let phase = $state<DownloadPhase>('idle');
   let filename = $state(initName || guessFilename(m3u8Url));
   let concurrency = $state(6);
+  let retries = $state(3);
   let streams = $state<StreamDef[]>([]);
   let selected = $state<StreamDef | null>(null);
   let progress = $state(0);
@@ -47,6 +50,13 @@
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   // Segment-level status grid
   let segStatuses = $state<SegmentStatus[]>([]);
+  // Subtitle & audio tracks
+  let subtitleTracks = $state<MediaTrack[]>([]);
+  let selectedSubtitles = $state<Set<string>>(new Set());
+  let audioTracks = $state<MediaTrack[]>([]);
+  let selectedAudio = $state<string | null>(null);
+  // Checkpoint / resume
+  let pendingCheckpoint = $state<DownloadCheckpoint | null>(null);
 
   // ── Derived ─────────────────────────────────────────────────────
   const pct = $derived(Math.round(progress * 100));
@@ -70,10 +80,23 @@
     const s = await loadSettings();
     concurrency = s.concurrency;
     convertToMp4 = s.convertToMp4;
+    retries = s.retries;
+    i18n.lang = s.language;
 
     if (!m3u8Url) {
       addLog('没有 M3U8 地址', 'error');
       return;
+    }
+
+    // Check for existing checkpoint
+    try {
+      const stored = await chrome.storage.local.get(`checkpoint:${m3u8Url}`);
+      const cp = stored[`checkpoint:${m3u8Url}`] as DownloadCheckpoint | undefined;
+      if (cp && cp.doneIndices.length > 0) {
+        pendingCheckpoint = cp;
+      }
+    } catch {
+      // storage unavailable — ignore
     }
 
     phase = 'prefetching';
@@ -87,7 +110,17 @@
 
       if (pl.type === 'master' && pl.streams.length > 0) {
         streams = pl.streams;
-        selected = pl.streams[0];
+        // Apply preferred resolution from settings
+        const preferred = s.preferredResolution;
+        const match = preferred
+          ? pl.streams.find((st) => qualityLabel(st) === preferred)
+          : null;
+        selected = match ?? pl.streams[0];
+
+        // Collect subtitle and audio tracks
+        subtitleTracks = pl.mediaTracks.filter((t) => t.type === 'SUBTITLES');
+        audioTracks = pl.mediaTracks.filter((t) => t.type === 'AUDIO');
+
         const opts = pl.streams
           .map((s) => s.resolution || `${Math.round(s.bandwidth / 1000)}k`)
           .join(' / ');
@@ -101,6 +134,9 @@
           vodSegments = pl.segments;
           rangeStart = 0;
           rangeEnd = pl.segments.length - 1;
+          if (pl.subtitleTracks && pl.subtitleTracks.length > 0) {
+            subtitleTracks = pl.subtitleTracks;
+          }
           addLog(`共 ${pl.segments.length} 个分片，时长约 ${dur}`, 'ok');
         }
       }
@@ -133,21 +169,55 @@
     }
   }
 
+  const CHECKPOINT_EVERY = 10; // save checkpoint every N completed segments
+
+  async function saveCheckpoint(segmentUrls: string[], doneIndices: number[]) {
+    if (!m3u8Url) return;
+    const cp: DownloadCheckpoint = {
+      url: m3u8Url,
+      filename: filename || 'video',
+      segmentUrls,
+      doneIndices,
+      savedAt: Date.now(),
+    };
+    try {
+      await chrome.storage.local.set({ [`checkpoint:${m3u8Url}`]: cp });
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function clearCheckpoint() {
+    if (!m3u8Url) return;
+    try {
+      await chrome.storage.local.remove(`checkpoint:${m3u8Url}`);
+    } catch {}
+  }
+
   async function startDownload() {
     phase = 'downloading';
 
     downloader = new M3U8Downloader({
       concurrency,
-      retries: 3,
+      retries,
       convertToMp4: !isLive && convertToMp4,
       startIndex: vodSegments.length > 0 ? rangeStart : undefined,
       endIndex: vodSegments.length > 0 ? rangeEnd : undefined,
+      audioTrackUrl: selectedAudio ?? undefined,
       onProgress(r, done, total, speed, bytes) {
         progress = r;
         segDone = done;
         segTotal = total;
         speedBps = speed;
         dlBytes = bytes;
+        // Save checkpoint every CHECKPOINT_EVERY segments
+        if (done % CHECKPOINT_EVERY === 0 && done > 0) {
+          const doneIdx = downloader!.segmentStatuses
+            .map((s, i) => (s === 'ok' ? i : -1))
+            .filter((i) => i !== -1);
+          const segUrls = vodSegments.slice(rangeStart, rangeEnd + 1).map((s) => s.url);
+          saveCheckpoint(segUrls, doneIdx).catch(() => {});
+        }
         if (queueId)
           chrome.runtime
             .sendMessage({ type: MSG.QUEUE_PROGRESS, queueId, progress: r })
@@ -170,6 +240,8 @@
       savedExt = result.ext;
       phase = 'done';
       progress = 1;
+      pendingCheckpoint = null;
+      await clearCheckpoint();
       await saveHistory('done', result.bytes, result.segments, result.ext);
       if (queueId)
         chrome.runtime
@@ -319,6 +391,22 @@
     downloader = null;
   }
 
+  function toggleLang() {
+    const next: Lang = i18n.lang === 'zh' ? 'en' : 'zh';
+    i18n.lang = next;
+    saveSettings({ language: next }).catch(() => {});
+  }
+
+  function selectQuality(s: StreamDef) {
+    selected = s;
+    // Remember quality preference
+    saveSettings({ preferredResolution: qualityLabel(s) }).catch(() => {});
+  }
+
+  function dismissCheckpoint() {
+    pendingCheckpoint = null;
+  }
+
   // ── History helper ──────────────────────────────────────────────
   async function saveHistory(
     status: 'done' | 'error' | 'aborted',
@@ -413,14 +501,19 @@
       </svg>
       <span>M3U8 <em>Downloader</em></span>
     </div>
-    <div class="nav-badge" class:visible={phase === 'downloading' || phase === 'merging'}>
-      <span class="dot"></span>{pct}%
-    </div>
-    {#if phase === 'recording'}
-      <div class="nav-rec">
-        <span class="rec-dot"></span>REC · {M3U8Parser.formatDuration(recElapsed)}
+    <div class="nav-status">
+      <div class="nav-badge" class:visible={phase === 'downloading' || phase === 'merging'}>
+        <span class="dot"></span>{pct}%
       </div>
-    {/if}
+      {#if phase === 'recording'}
+        <div class="nav-rec">
+          <span class="rec-dot"></span>REC · {M3U8Parser.formatDuration(recElapsed)}
+        </div>
+      {/if}
+    </div>
+    <button class="lang-switch" onclick={toggleLang} title={i18n.lang === 'zh' ? 'Switch to English' : '切换为中文'}>
+      {i18n.lang === 'zh' ? '中' : 'En'}
+    </button>
   </nav>
 
   <!-- Main -->
@@ -438,10 +531,10 @@
           <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
           <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
         </svg>
-        M3U8 地址
-        {#if isLive}<span class="live-chip">LIVE</span>{/if}
+        {i18n.t('streamUrl')}
+        {#if isLive}<span class="live-chip">{i18n.t('liveLabel')}</span>{/if}
       </div>
-      <div class="url-text">{m3u8Url || '（未提供地址）'}</div>
+      <div class="url-text">{m3u8Url || i18n.t('noUrl')}</div>
     </section>
 
     <!-- Settings -->
@@ -460,12 +553,12 @@
             d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"
           />
         </svg>
-        设置
+        {i18n.t('settingsLabel')}
       </div>
 
       <div class="settings-grid">
         <div class="field">
-          <label for="fname">文件名</label>
+          <label for="fname">{i18n.t('filenameLabel')}</label>
           <div class="input-row">
             <input
               id="fname"
@@ -478,7 +571,7 @@
           </div>
         </div>
         <div class="field">
-          <label for="conc">并发数</label>
+          <label for="conc">{i18n.t('concurrencyLabel')}</label>
           <div class="slider-row">
             <input
               id="conc"
@@ -494,7 +587,7 @@
         </div>
         {#if !isLive}
           <div class="field">
-            <span class="field-label" id="fmt-label">输出格式</span>
+            <span class="field-label" id="fmt-label">{i18n.t('formatLabel')}</span>
             <div
               class="format-toggle"
               class:disabled={isRunning}
@@ -504,12 +597,12 @@
               <button
                 class:active={!convertToMp4}
                 onclick={() => !isRunning && (convertToMp4 = false)}
-                >.ts <span class="fmt-hint">原始</span></button
+                >.ts <span class="fmt-hint">{i18n.t('formatTs')}</span></button
               >
               <button
                 class:active={convertToMp4}
                 onclick={() => !isRunning && (convertToMp4 = true)}
-                >.mp4 <span class="fmt-hint">兼容</span></button
+                >.mp4 <span class="fmt-hint">{i18n.t('formatMp4')}</span></button
               >
             </div>
           </div>
@@ -519,18 +612,76 @@
       <!-- Quality selector -->
       {#if streams.length > 0}
         <div class="quality-section">
-          <span class="quality-label" id="quality-label">清晰度</span>
+          <span class="quality-label" id="quality-label">{i18n.t('qualityLabel')}</span>
           <div class="quality-list" role="group" aria-labelledby="quality-label">
             {#each streams as s, i (s.url)}
               <button
                 class="quality-chip"
                 class:active={selected === s}
-                onclick={() => (selected = s)}
+                onclick={() => selectQuality(s)}
                 disabled={isRunning}
               >
                 {qualityLabel(s)}
-                {#if i === 0}<span class="best-tag">BEST</span>{/if}
+                {#if i === 0}<span class="best-tag">{i18n.t('bestTag')}</span>{/if}
               </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Subtitle tracks -->
+      {#if subtitleTracks.length > 0}
+        <div class="track-section">
+          <span class="track-label">{i18n.t('subtitleTracksLabel')}</span>
+          <div class="track-list">
+            {#each subtitleTracks as track (track.uri)}
+              <label class="track-chip">
+                <input
+                  type="checkbox"
+                  checked={selectedSubtitles.has(track.uri)}
+                  onchange={(e) => {
+                    const next = new Set(selectedSubtitles);
+                    if ((e.target as HTMLInputElement).checked) next.add(track.uri);
+                    else next.delete(track.uri);
+                    selectedSubtitles = next;
+                  }}
+                  disabled={isRunning}
+                />
+                {track.name}{track.language ? ` (${track.language})` : ''}
+              </label>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Audio tracks -->
+      {#if audioTracks.length > 0}
+        <div class="track-section">
+          <span class="track-label">{i18n.t('audioTracksLabel')}</span>
+          <div class="track-list">
+            <label class="track-chip">
+              <input
+                type="radio"
+                name="audio-track"
+                value=""
+                checked={selectedAudio === null}
+                onchange={() => (selectedAudio = null)}
+                disabled={isRunning}
+              />
+              {i18n.t('defaultAudio')}
+            </label>
+            {#each audioTracks as track (track.uri)}
+              <label class="track-chip">
+                <input
+                  type="radio"
+                  name="audio-track"
+                  value={track.uri}
+                  checked={selectedAudio === track.uri}
+                  onchange={() => (selectedAudio = track.uri)}
+                  disabled={isRunning}
+                />
+                {track.name}{track.language ? ` (${track.language})` : ''}
+              </label>
             {/each}
           </div>
         </div>
@@ -548,6 +699,23 @@
         </div>
       {/if}
     </section>
+
+    <!-- Checkpoint / resume prompt -->
+    {#if pendingCheckpoint && phase === 'idle'}
+      <section class="card checkpoint-card">
+        <div class="checkpoint-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          <span>{i18n.t('resumePrompt')} {i18n.t('resumeDone', pendingCheckpoint.doneIndices.length, pendingCheckpoint.segmentUrls.length)}</span>
+        </div>
+        <div class="checkpoint-actions">
+          <button class="btn-resume" onclick={start}>{i18n.t('continueDownload')}</button>
+          <button class="btn-discard" onclick={dismissCheckpoint}>{i18n.t('freshDownload')}</button>
+        </div>
+      </section>
+    {/if}
 
     <!-- Action buttons -->
     <ActionButtons
@@ -625,6 +793,32 @@
     background: var(--accent-grad);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+  }
+
+  .nav-status {
+    display: flex;
+    align-items: center;
+  }
+
+  .lang-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 28px;
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: all var(--transition);
+  }
+  .lang-switch:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
   }
 
   .nav-badge {
@@ -915,5 +1109,90 @@
     font-size: 10px;
     color: var(--text-3);
     font-weight: 400;
+  }
+
+  /* ── Track selector (subtitles / audio) ── */
+  .track-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .track-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-2);
+    font-weight: 500;
+    margin-bottom: 9px;
+  }
+  .track-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .track-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .track-chip:hover {
+    border-color: var(--border-hi);
+    color: var(--text);
+  }
+  .track-chip input {
+    accent-color: var(--accent);
+  }
+
+  /* ── Checkpoint card ── */
+  .checkpoint-card {
+    background: #5b9df610;
+    border-color: var(--accent);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .checkpoint-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .checkpoint-info svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--accent);
+  }
+  .checkpoint-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-resume {
+    padding: 6px 16px;
+    border-radius: var(--radius);
+    background: var(--accent-grad);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .btn-discard {
+    padding: 6px 16px;
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .btn-discard:hover {
+    border-color: var(--border-hi);
+    color: var(--text-2);
   }
 </style>

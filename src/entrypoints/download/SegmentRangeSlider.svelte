@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Segment } from '../../lib/types';
   import { M3U8Parser } from '../../lib/m3u8-parser';
+  import { i18n } from '../../lib/i18n.svelte';
 
   let {
     segments,
@@ -44,8 +45,8 @@
 
 <div class="range-wrap">
   <div class="range-label">
-    <span>分片范围</span>
-    <span class="range-info">{selCount} 片 · {selDur}</span>
+    <span>{i18n.t('segRangeLabel')}</span>
+    <span class="range-info">{selCount} {i18n.t('segs')} · {selDur}</span>
   </div>
 
   <div class="slider-container">

@@ -4,13 +4,14 @@ import type {
   InitSegment,
   MasterPlaylist,
   MediaPlaylist,
+  MediaTrack,
   Playlist,
   Segment,
   StreamDef,
 } from './types';
 
 export class M3U8Parser {
-  static parse(text: string, baseUrl: string): Playlist {
+  static parse(text: string, baseUrl: string, subtitleTracks?: MediaTrack[]): Playlist {
     const lines = text
       .split('\n')
       .map((l) => l.trim())
@@ -18,17 +19,33 @@ export class M3U8Parser {
     if (!lines[0]?.startsWith('#EXTM3U')) {
       throw new Error('不是合法的 M3U8 文件（缺少 #EXTM3U 头）');
     }
-    return text.includes('#EXT-X-STREAM-INF')
-      ? this.parseMaster(lines, baseUrl)
-      : this.parseMedia(lines, baseUrl);
+    if (text.includes('#EXT-X-STREAM-INF')) {
+      return this.parseMaster(lines, baseUrl);
+    }
+    const media = this.parseMedia(lines, baseUrl);
+    if (subtitleTracks) media.subtitleTracks = subtitleTracks;
+    return media;
   }
 
   private static parseMaster(lines: string[], baseUrl: string): MasterPlaylist {
     const streams: StreamDef[] = [];
+    const mediaTracks: MediaTrack[] = [];
     let pending: Partial<StreamDef> | null = null;
 
     for (const line of lines) {
-      if (line.startsWith('#EXT-X-STREAM-INF:')) {
+      if (line.startsWith('#EXT-X-MEDIA:')) {
+        const a = this.parseAttrs(line.slice('#EXT-X-MEDIA:'.length));
+        const type = a['TYPE'];
+        const uri = a['URI']?.replace(/^"|"$/g, '');
+        if ((type === 'SUBTITLES' || type === 'AUDIO') && uri) {
+          mediaTracks.push({
+            type: type as 'SUBTITLES' | 'AUDIO',
+            name: a['NAME']?.replace(/^"|"$/g, '') ?? '',
+            language: a['LANGUAGE']?.replace(/^"|"$/g, ''),
+            uri: this.resolve(uri, baseUrl),
+          });
+        }
+      } else if (line.startsWith('#EXT-X-STREAM-INF:')) {
         const a = this.parseAttrs(line.slice('#EXT-X-STREAM-INF:'.length));
         pending = {
           bandwidth: parseInt(a['BANDWIDTH'] ?? '0') || 0,
@@ -44,7 +61,7 @@ export class M3U8Parser {
     }
 
     streams.sort((a, b) => b.bandwidth - a.bandwidth);
-    return { type: 'master', streams };
+    return { type: 'master', streams, mediaTracks };
   }
 
   private static parseMedia(lines: string[], baseUrl: string): MediaPlaylist {
@@ -120,6 +137,7 @@ export class M3U8Parser {
       isLive: !isEndList,
       initSegment,
       isFmp4,
+      subtitleTracks: [],
     };
   }
 
