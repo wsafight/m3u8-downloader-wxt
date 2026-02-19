@@ -58,6 +58,11 @@
 
 <style>
   .progress-section {
+    background: var(--surface, #f8fafc);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: var(--radius-lg, 12px);
+    padding: 18px 20px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     animation: fadeSlideIn 0.3s ease both;
   }
   .progress-header {
@@ -67,51 +72,59 @@
     margin-bottom: 10px;
   }
   .progress-pct {
-    font-size: 36px;
+    font-size: 40px;
     font-weight: 800;
     line-height: 1;
-    background: var(--accent-grad, linear-gradient(135deg, #5b9df6, #22d3ee));
+    letter-spacing: -1px;
+    background: var(--accent-grad, linear-gradient(135deg, #2563eb, #3b82f6));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
   .progress-pct.done {
-    background: linear-gradient(135deg, #34d399, #059669);
+    background: linear-gradient(135deg, #16a34a, #34d399);
     -webkit-background-clip: text;
   }
   .progress-right {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 3px;
+    gap: 4px;
   }
   .progress-seg {
     font-size: 13px;
-    color: var(--text-2, #7a96ba);
+    font-weight: 500;
+    color: var(--text-2, #475569);
   }
   .speed-eta {
     font-size: 11px;
-    color: var(--text-3, #3d5878);
+    color: var(--text-3, #94a3b8);
     font-family: 'SFMono-Regular', Consolas, monospace;
+    background: var(--surface-2, #f1f5f9);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 4px;
+    padding: 2px 7px;
   }
   .progress-track {
     position: relative;
     height: 8px;
     border-radius: 4px;
-    background: var(--surface-2, #111d38);
-    border: 1px solid var(--border, #1a2f4e);
+    background: var(--surface-3, #e2e8f0);
+    border: 1px solid var(--border, #e2e8f0);
     overflow: hidden;
+    margin-top: 4px;
   }
   .progress-fill {
     position: absolute;
     inset: 0;
     width: 0%;
     border-radius: 4px;
-    background: var(--accent-grad, linear-gradient(135deg, #5b9df6, #22d3ee));
+    background: var(--accent-grad, linear-gradient(135deg, #2563eb, #3b82f6));
     transition: width 0.35s ease;
-    box-shadow: 0 0 8px #5b9df650;
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
   }
   .progress-fill.done {
-    background: linear-gradient(90deg, #34d399, #059669);
+    background: linear-gradient(90deg, #16a34a, #34d399);
+    box-shadow: 0 0 8px rgba(22, 163, 74, 0.3);
   }
   .progress-shimmer {
     position: absolute;

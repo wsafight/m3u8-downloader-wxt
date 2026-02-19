@@ -97,8 +97,16 @@
     font-weight: 500;
   }
   .range-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     color: var(--accent);
     font-weight: 600;
+    background: var(--accent-light);
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 11px;
   }
 
   .slider-container {
@@ -156,5 +164,9 @@
     font-size: 10px;
     color: var(--text-3);
     font-family: 'SFMono-Regular', Consolas, monospace;
+    background: var(--surface-2);
+    border-radius: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
   }
 </style>

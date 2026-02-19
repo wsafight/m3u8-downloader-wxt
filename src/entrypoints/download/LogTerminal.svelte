@@ -37,74 +37,85 @@
   .terminal {
     border-radius: var(--radius-lg, 12px);
     overflow: hidden;
-    border: 1px solid var(--border, #1a2f4e);
+    border: 1px solid #1e293b;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.22),
+      0 2px 8px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset;
     animation: fadeSlideIn 0.35s ease 0.1s both;
   }
   .terminal-bar {
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 9px 14px;
-    background: var(--surface-2, #111d38);
-    border-bottom: 1px solid var(--border, #1a2f4e);
+    padding: 10px 14px;
+    background: #0f172a;
+    border-bottom: 1px solid #1e293b;
   }
   .dot-r,
   .dot-y,
   .dot-g {
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
+    flex-shrink: 0;
   }
   .dot-r {
-    background: #f87171;
+    background: #fc605c;
+    box-shadow: 0 0 5px rgba(252, 96, 92, 0.6);
   }
   .dot-y {
-    background: #fbbf24;
+    background: #fdbc40;
+    box-shadow: 0 0 5px rgba(253, 188, 64, 0.6);
   }
   .dot-g {
-    background: #34d399;
+    background: #34c84a;
+    box-shadow: 0 0 5px rgba(52, 200, 74, 0.6);
   }
   .terminal-title {
     flex: 1;
     text-align: center;
     font-size: 11px;
-    color: var(--text-3, #3d5878);
+    color: #475569;
     font-weight: 500;
+    letter-spacing: 0.3px;
   }
   .terminal-body {
     padding: 14px 16px;
     min-height: 100px;
-    max-height: 200px;
+    max-height: 220px;
     overflow-y: auto;
-    background: #020509;
+    background: #080d16;
     font-family: 'SFMono-Regular', Consolas, monospace;
     font-size: 12px;
-    line-height: 1.7;
+    line-height: 1.75;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
   .log-placeholder {
-    color: var(--text-3, #3d5878);
+    color: #334155;
+    font-style: italic;
   }
   .log-line {
     display: flex;
     gap: 8px;
   }
   .log-time {
-    color: var(--text-3, #3d5878);
+    color: #334155;
     flex-shrink: 0;
+    user-select: none;
   }
   .log-line.ok .log-msg {
-    color: var(--success, #34d399);
+    color: #4ade80;
   }
   .log-line.warn .log-msg {
-    color: var(--warn, #fbbf24);
+    color: #fbbf24;
   }
   .log-line.error .log-msg {
-    color: var(--error, #f87171);
+    color: #f87171;
   }
   .log-line.info .log-msg {
-    color: var(--text-2, #7a96ba);
+    color: #93c5fd;
   }
 </style>

@@ -480,7 +480,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 14px;
-    background: var(--bg);
+    background: linear-gradient(135deg, var(--bg) 0%, var(--surface) 100%);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -552,14 +552,17 @@
     border-bottom: 2px solid transparent;
     transition:
       color 0.15s,
-      border-color 0.15s;
+      border-color 0.15s,
+      background 0.15s;
   }
   .tab:hover {
     color: var(--text-2);
+    background: var(--surface-3);
   }
   .tab.active {
     color: var(--accent);
     border-color: var(--accent);
+    background: var(--surface);
   }
 
   .tab-icon {
@@ -646,6 +649,7 @@
     border-radius: var(--radius);
     background: var(--bg);
     border: 1px solid var(--border);
+    border-left: 2px solid transparent;
     animation: fadeSlideIn 0.25s ease both;
     box-shadow: var(--shadow-sm);
     transition:
@@ -654,6 +658,7 @@
   }
   .stream-card:hover {
     border-color: var(--border-hi);
+    border-left-color: var(--accent);
     box-shadow: var(--shadow-md);
   }
 
@@ -910,6 +915,7 @@
 
   .stream-card.selected {
     border-color: var(--accent);
+    border-left-color: var(--accent);
     background: var(--accent-light);
   }
 

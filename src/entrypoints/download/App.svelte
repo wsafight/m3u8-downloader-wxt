@@ -770,8 +770,9 @@
     justify-content: space-between;
     padding: 0 28px;
     height: 54px;
-    background: var(--surface);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
     border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 0 var(--border), 0 2px 12px rgba(0, 0, 0, 0.04);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -825,14 +826,15 @@
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 4px 12px;
-    background: var(--accent-glow);
-    border: 1px solid var(--border-hi);
+    padding: 4px 14px;
+    background: var(--accent-light);
+    border: 1px solid #bfdbfe;
     border-radius: 20px;
     font-size: 13px;
     font-weight: 700;
     color: var(--accent);
     opacity: 0;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07);
     transition: opacity var(--transition);
   }
   .nav-badge.visible {
@@ -896,35 +898,44 @@
     border-radius: var(--radius-lg);
     padding: 18px 20px;
     animation: fadeSlideIn 0.3s ease both;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  }
+  .url-card {
+    border-left: 3px solid var(--accent);
+    background: linear-gradient(135deg, var(--surface) 0%, var(--accent-light) 100%);
   }
   .card-label {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: var(--text-3);
-    margin-bottom: 12px;
+    color: var(--text-2);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
   }
   .card-label svg {
     width: 14px;
     height: 14px;
+    color: var(--accent);
   }
 
   .url-text {
     font-family: 'SFMono-Regular', Consolas, monospace;
     font-size: 12px;
     color: var(--accent);
-    background: var(--surface-2);
-    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid #bfdbfe;
     border-radius: var(--radius);
     padding: 10px 14px;
     word-break: break-all;
     line-height: 1.6;
     max-height: 72px;
     overflow-y: auto;
+    box-shadow: inset 0 1px 3px rgba(37, 99, 235, 0.05);
   }
 
   .settings-grid {
@@ -1050,9 +1061,11 @@
     color: var(--text);
   }
   .quality-chip.active {
-    background: var(--accent-glow);
+    background: var(--accent-light);
     border-color: var(--accent);
     color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    font-weight: 600;
   }
   .quality-chip:disabled {
     opacity: 0.5;
@@ -1060,9 +1073,10 @@
   }
   .best-tag {
     font-size: 9px;
-    font-weight: 800;
-    color: var(--accent-2);
-    background: #22d3ee15;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(37, 99, 235, 0.1);
+    border: 1px solid rgba(37, 99, 235, 0.2);
     padding: 1px 5px;
     border-radius: 4px;
   }
@@ -1095,11 +1109,15 @@
     gap: 4px;
   }
   .format-toggle button.active {
-    background: var(--accent-glow);
+    background: var(--accent-light);
     color: var(--accent);
+    border-right: 1px solid #bfdbfe;
+    border-left: 1px solid #bfdbfe;
+    font-weight: 700;
   }
   .format-toggle button:not(.active):hover {
     color: var(--text-2);
+    background: var(--surface-3);
   }
   .format-toggle.disabled {
     opacity: 0.45;

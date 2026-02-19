@@ -177,13 +177,14 @@
     width: 100%;
     padding: 16px 28px;
     border-radius: var(--radius-lg, 12px);
-    background: var(--accent-grad, linear-gradient(135deg, #5b9df6, #22d3ee));
+    background: var(--accent-grad, linear-gradient(135deg, #2563eb, #3b82f6));
     color: #fff;
     font-size: 15px;
     font-weight: 700;
+    letter-spacing: 0.2px;
     box-shadow:
-      0 4px 24px #5b9df640,
-      0 1px 0 #ffffff20 inset;
+      0 4px 20px rgba(37, 99, 235, 0.35),
+      0 1px 0 rgba(255, 255, 255, 0.2) inset;
     transition:
       opacity var(--transition, 0.18s ease),
       transform 0.12s,
@@ -194,9 +195,11 @@
     height: 20px;
   }
   .btn-main:not(:disabled):hover {
-    opacity: 0.9;
+    opacity: 0.92;
     transform: translateY(-2px);
-    box-shadow: 0 8px 32px #5b9df660;
+    box-shadow:
+      0 10px 36px rgba(37, 99, 235, 0.45),
+      0 1px 0 rgba(255, 255, 255, 0.2) inset;
   }
   .btn-main:not(:disabled):active {
     transform: scale(0.97);
@@ -206,16 +209,19 @@
     cursor: default;
   }
   .btn-main.done {
-    background: linear-gradient(135deg, #34d399, #059669);
-    box-shadow: 0 4px 24px #34d39940;
+    background: linear-gradient(135deg, #16a34a, #34d399);
+    box-shadow: 0 4px 20px rgba(22, 163, 74, 0.35);
+  }
+  .btn-main.done:not(:disabled):hover {
+    box-shadow: 0 10px 36px rgba(22, 163, 74, 0.45);
   }
   .btn-main.error {
-    background: linear-gradient(135deg, #f87171, #dc2626);
-    box-shadow: 0 4px 24px #f8717140;
+    background: linear-gradient(135deg, #dc2626, #f87171);
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.35);
   }
   .btn-main.live {
-    background: linear-gradient(135deg, #f87171, #dc2626);
-    box-shadow: 0 4px 24px #f8717140;
+    background: linear-gradient(135deg, #dc2626, #f87171);
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.35);
   }
 
   .btn-abort {
@@ -226,21 +232,25 @@
     width: 100%;
     padding: 16px 28px;
     border-radius: var(--radius-lg, 12px);
-    background: transparent;
-    border: 1.5px solid var(--error, #f87171);
-    color: var(--error, #f87171);
+    background: #fef2f2;
+    border: 1.5px solid #fca5a5;
+    color: #dc2626;
     font-size: 15px;
     font-weight: 700;
     transition:
       background var(--transition),
-      transform 0.12s;
+      border-color var(--transition),
+      transform 0.12s,
+      box-shadow var(--transition);
   }
   .btn-abort svg {
     width: 20px;
     height: 20px;
   }
   .btn-abort:hover {
-    background: #f871711a;
+    background: #fee2e2;
+    border-color: #f87171;
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.15);
     transform: translateY(-1px);
   }
   .btn-abort:active {

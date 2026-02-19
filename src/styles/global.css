@@ -100,9 +100,15 @@ a:hover { text-decoration: underline; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-hi);
-  border-radius: 2px;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ── Selection ──────────────────────────────────────────────────── */
+::selection {
+  background: var(--accent-glow-hi);
+  color: var(--text);
+}
 
 /* ── Utility Classes ────────────────────────────────────────────── */
 .truncate {

@@ -35,7 +35,7 @@
         --warn: #d97706;
         --radius: 8px;
         --radius-lg: 14px;
-        --transition: 0.15s ease;
+        --transition: 0.18s ease;
       }
 
       html {
@@ -43,7 +43,7 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Helvetica Neue', sans-serif;
         background: var(--bg);
         color: var(--text);
         line-height: 1.6;
@@ -69,8 +69,10 @@
         justify-content: space-between;
         padding: 0 40px;
         height: 56px;
-        background: var(--bg);
-        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border-bottom: 1px solid rgba(226, 232, 240, 0.8);
         gap: 24px;
       }
       .nav-logo {
@@ -146,11 +148,13 @@
         color: #fff;
         font-size: 13px;
         font-weight: 600;
-        transition: background var(--transition);
+        transition: background var(--transition), box-shadow var(--transition), transform var(--transition);
       }
       .nav-cta:hover {
         background: var(--accent-2);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
         text-decoration: none;
+        transform: translateY(-1px);
       }
 
       /* ── HERO ── */
@@ -159,8 +163,9 @@
         padding: 96px 24px 80px;
         position: relative;
         overflow: hidden;
+        background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(37, 99, 235, 0.06) 0%, transparent 70%);
       }
-      /* horizontal-fade grid — same as m3u8-player.net */
+      /* horizontal-fade grid */
       .hero::before {
         content: '';
         position: absolute;
@@ -171,6 +176,7 @@
         background-size: 50px 50px;
         mask-image: linear-gradient(to right, transparent, black 18%, black 82%, transparent);
         pointer-events: none;
+        opacity: 0.6;
       }
       .hero-inner {
         position: relative;
@@ -195,6 +201,7 @@
         height: 6px;
         border-radius: 50%;
         background: var(--success);
+        animation: pulse 2.5s ease-in-out infinite;
       }
 
       h1 {
@@ -207,7 +214,10 @@
       }
       h1 em {
         font-style: normal;
-        color: var(--accent);
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #0ea5e9 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
       }
       .hero-sub {
         font-size: clamp(14px, 1.8vw, 17px);
@@ -235,12 +245,14 @@
         box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
         transition:
           background var(--transition),
-          box-shadow var(--transition);
+          box-shadow var(--transition),
+          transform var(--transition);
       }
       .btn-primary:hover {
         background: var(--accent-2);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
         text-decoration: none;
+        transform: translateY(-2px);
       }
       .btn-secondary {
         display: inline-flex;
@@ -257,13 +269,15 @@
         transition:
           border-color var(--transition),
           color var(--transition),
-          box-shadow var(--transition);
+          box-shadow var(--transition),
+          transform var(--transition);
       }
       .btn-secondary:hover {
         border-color: var(--border-hi);
         color: var(--text);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
         text-decoration: none;
+        transform: translateY(-2px);
       }
 
       /* ── BROWSER MOCKUP ── */
@@ -277,8 +291,8 @@
         overflow: hidden;
         border: 1px solid var(--border);
         box-shadow:
-          0 4px 24px rgba(0, 0, 0, 0.08),
-          0 1px 4px rgba(0, 0, 0, 0.06);
+          0 8px 32px rgba(0, 0, 0, 0.1),
+          0 2px 8px rgba(0, 0, 0, 0.06);
       }
       .browser-bar {
         display: flex;
@@ -292,7 +306,6 @@
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: var(--surface-3);
       }
       .browser-addr {
         flex: 1;
@@ -303,10 +316,15 @@
         border: 1px solid var(--border);
         display: flex;
         align-items: center;
+        gap: 6px;
         padding: 0 10px;
         font-size: 11px;
         color: var(--text-3);
         font-family: monospace;
+      }
+      .browser-addr svg {
+        flex-shrink: 0;
+        color: var(--success);
       }
       .browser-body {
         background: var(--surface);
@@ -326,25 +344,26 @@
         gap: 10px;
         align-items: center;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        cursor: pointer;
         transition:
           border-color var(--transition),
           box-shadow var(--transition);
       }
       .mock-card:hover {
-        border-color: var(--border-hi);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border-color: #bfdbfe;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
       }
       .mock-thumb {
         width: 32px;
         height: 32px;
         border-radius: 6px;
         flex-shrink: 0;
-        background: var(--surface-2);
-        border: 1px solid var(--border);
+        background: var(--accent-light);
+        border: 1px solid #bfdbfe;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--text-3);
+        color: var(--accent);
         font-size: 13px;
       }
       .mock-info {
@@ -371,22 +390,23 @@
         margin-top: 2px;
       }
       .mock-btn {
-        width: 26px;
-        height: 26px;
-        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
         background: var(--accent-light);
         border: 1px solid #bfdbfe;
         display: flex;
         align-items: center;
         justify-content: center;
         color: var(--accent);
-        font-size: 13px;
         flex-shrink: 0;
         cursor: pointer;
-        transition: background var(--transition);
+        transition: background var(--transition), color var(--transition), transform var(--transition);
       }
       .mock-btn:hover {
-        background: #dbeafe;
+        background: var(--accent);
+        color: #fff;
+        transform: scale(1.05);
       }
 
       /* ── STATS STRIP ── */
@@ -403,7 +423,7 @@
       .stat-item {
         flex: 1;
         min-width: 160px;
-        padding: 28px 24px;
+        padding: 32px 24px;
         text-align: center;
         position: relative;
       }
@@ -417,12 +437,15 @@
         background: var(--border);
       }
       .stat-val {
-        font-size: 24px;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 800;
         letter-spacing: -0.5px;
-        color: var(--accent);
         margin-bottom: 4px;
         font-variant-numeric: tabular-nums;
+        background: linear-gradient(135deg, #2563eb, #3b82f6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
       }
       .stat-label {
         font-size: 12px;
@@ -476,19 +499,40 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         transition:
           border-color var(--transition),
-          box-shadow var(--transition);
+          box-shadow var(--transition),
+          transform var(--transition);
       }
       .feature-card:hover {
-        border-color: var(--border-hi);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        border-color: #bfdbfe;
+        box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
+        transform: translateY(-3px);
       }
 
+      /* ── FEATURE ICON CONTAINER ── */
       .feature-icon {
-        font-size: 22px;
-        margin-bottom: 14px;
-        display: block;
-        line-height: 1;
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background: var(--accent-light);
+        border: 1px solid #bfdbfe;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        margin-bottom: 16px;
+        flex-shrink: 0;
+        transition: background var(--transition), border-color var(--transition);
       }
+      .feature-icon svg {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+      }
+      .feature-card:hover .feature-icon {
+        background: #dbeafe;
+        border-color: #93c5fd;
+      }
+
       .feature-title {
         font-size: 14px;
         font-weight: 600;
@@ -521,7 +565,7 @@
         left: calc(12.5% + 18px);
         right: calc(12.5% + 18px);
         height: 1px;
-        background: var(--border);
+        background: linear-gradient(to right, #bfdbfe, #93c5fd, #bfdbfe);
       }
       .step {
         flex: 1;
@@ -535,16 +579,16 @@
         width: 36px;
         height: 36px;
         border-radius: 50%;
-        background: var(--bg);
-        border: 1px solid var(--border);
+        background: linear-gradient(135deg, #eff6ff, #dbeafe);
+        border: 1.5px solid #bfdbfe;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 13px;
-        font-weight: 600;
+        font-size: 14px;
+        font-weight: 700;
         color: var(--accent);
         margin: 0 auto 18px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
       }
       .step-title {
         font-size: 13px;
@@ -566,7 +610,7 @@
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
         overflow: hidden;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
       }
       .install-tab-bar {
         display: flex;
@@ -676,6 +720,12 @@
         transform: none;
       }
 
+      /* ── ANIMATIONS ── */
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.55; transform: scale(0.85); }
+      }
+
       /* ── RESPONSIVE ── */
       @media (max-width: 640px) {
         nav {
@@ -699,6 +749,25 @@
         }
         .features-grid {
           grid-template-columns: 1fr;
+        }
+      }
+
+      /* ── REDUCED MOTION ── */
+      @media (prefers-reduced-motion: reduce) {
+        .reveal {
+          transition: none;
+          opacity: 1;
+          transform: none;
+        }
+        .hero-badge .dot {
+          animation: none;
+        }
+        .feature-card:hover,
+        .btn-primary:hover,
+        .btn-secondary:hover,
+        .nav-cta:hover,
+        .mock-btn:hover {
+          transform: none;
         }
       }
     </style>
@@ -782,38 +851,55 @@
         <div class="mockup-wrap">
           <div class="browser">
             <div class="browser-bar">
-              <div class="browser-dot"></div>
-              <div class="browser-dot"></div>
-              <div class="browser-dot"></div>
-              <div class="browser-addr">🔒 www.example.com/watch?v=12345</div>
+              <div class="browser-dot" style="background:#fc605c"></div>
+              <div class="browser-dot" style="background:#fdbc40"></div>
+              <div class="browser-dot" style="background:#34c84a"></div>
+              <div class="browser-addr">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                www.example.com/watch?v=12345
+              </div>
             </div>
             <div class="browser-body">
               <div class="mock-card">
-                <div class="mock-thumb">▶</div>
+                <div class="mock-thumb">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                </div>
                 <div class="mock-info">
                   <div class="mock-host">cdn.example.com</div>
                   <div class="mock-path">/hls/1080p/index.m3u8</div>
                   <div class="mock-time" data-i18n="mock-time-1">3秒前</div>
                 </div>
-                <div class="mock-btn">↓</div>
+                <div class="mock-btn">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v13M5 13l7 7 7-7"/></svg>
+                </div>
               </div>
               <div class="mock-card">
-                <div class="mock-thumb">▶</div>
+                <div class="mock-thumb">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                </div>
                 <div class="mock-info">
                   <div class="mock-host">media.stream.io</div>
                   <div class="mock-path">/v2/playlist.m3u8?token=…</div>
                   <div class="mock-time" data-i18n="mock-time-2">12秒前</div>
                 </div>
-                <div class="mock-btn">↓</div>
+                <div class="mock-btn">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v13M5 13l7 7 7-7"/></svg>
+                </div>
               </div>
               <div class="mock-card">
-                <div class="mock-thumb">▶</div>
+                <div class="mock-thumb">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                </div>
                 <div class="mock-info">
                   <div class="mock-host">vod.provider.net</div>
                   <div class="mock-path">/enc/aes128/master.m3u8</div>
                   <div class="mock-time" data-i18n="mock-time-3">1分钟前</div>
                 </div>
-                <div class="mock-btn">↓</div>
+                <div class="mock-btn">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v13M5 13l7 7 7-7"/></svg>
+                </div>
               </div>
             </div>
           </div>
@@ -851,7 +937,12 @@
 
       <div class="features-grid">
         <div class="feature-card reveal">
-          <div class="feature-icon">🎯</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/>
+              <path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-detect-title">三路自动检测</div>
           <div class="feature-desc" data-i18n="feat-detect-desc">
             同时拦截页面 XHR/Fetch 请求、监听网络响应 Content-Type、扫描 DOM 中的 &lt;video&gt;
@@ -859,7 +950,11 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🔐</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-aes-title">AES-128 解密</div>
           <div class="feature-desc" data-i18n="feat-aes-desc">
             自动获取并缓存加密密钥，支持显式 IV 与序列号推导，使用 Web Crypto API
@@ -867,7 +962,15 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🎬</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-quality-title">多清晰度选择</div>
           <div class="feature-desc" data-i18n="feat-quality-desc">
             解析 Master Playlist，按带宽从高到低排序，下载前可手动选择 1080p / 720p / 480p
@@ -875,7 +978,12 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">📦</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-fmp4-title">fMP4 &amp; BYTERANGE</div>
           <div class="feature-desc" data-i18n="feat-fmp4-desc">
             完整支持 #EXT-X-MAP 初始化分片与 #EXT-X-BYTERANGE 字节范围请求，正确处理现代 HLS
@@ -883,21 +991,38 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">⚡</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-speed-title">实时速度 &amp; ETA</div>
           <div class="feature-desc" data-i18n="feat-speed-desc">
             4 秒滚动窗口计算瞬时下载速度，动态估算剩余时间，让你随时掌握下载进展，不再盲等。
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">✂️</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-range-title">分片范围选择</div>
           <div class="feature-desc" data-i18n="feat-range-desc">
             双滑块精确拖选起止分片，实时显示起止时间戳与选中时长，轻松截取视频中的任意片段。
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🔴</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+              <path d="M16.24 7.76a6 6 0 010 8.49M7.76 7.76a6 6 0 000 8.49"/>
+              <path d="M20.49 3.51a12 12 0 010 16.97M3.51 3.51a12 12 0 000 16.97"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-live-title">直播流录制</div>
           <div class="feature-desc" data-i18n="feat-live-desc">
             自动识别直播流（无 #EXT-X-ENDLIST），一键切换录制模式，停止后自动合并为 .ts
@@ -905,21 +1030,34 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">📋</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18M3 12h18M3 18h12"/><path d="M19 15l3 3-3 3"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-queue-title">批量下载队列</div>
           <div class="feature-desc" data-i18n="feat-queue-desc">
             在弹窗中将多个流一键加入队列，后台 Service Worker 依次自动处理，无需手动守候每一个任务。
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🕐</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-history-title">下载历史</div>
           <div class="feature-desc" data-i18n="feat-history-desc">
             自动记录最近 200 条下载记录，包含文件名、大小、分片数、域名，随时回溯已下载内容。
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">💾</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="6" height="6"/>
+              <path d="M15 9V5H9v4M9 15v4h6v-4M15 15h4V9h-4M9 9H5v6h4"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-memory-title">低内存合并 &amp; 持久设置</div>
           <div class="feature-desc" data-i18n="feat-memory-desc">
             每 100 段批次合并 Blob 并释放 ArrayBuffer，避免 OOM；并发线程数通过 storage.sync
@@ -927,7 +1065,11 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🍪</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-cookie-title">请求头自动透传</div>
           <div class="feature-desc" data-i18n="feat-cookie-desc">
             下载时自动携带当前页面的 Cookie 与
@@ -935,7 +1077,12 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">▶️</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-preview-title">弹窗在线预览</div>
           <div class="feature-desc" data-i18n="feat-preview-desc">
             点击流列表中的播放按钮，基于 hls.js
@@ -943,7 +1090,12 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🔄</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
+              <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-remux-title">TS → MP4 重封装</div>
           <div class="feature-desc" data-i18n="feat-remux-desc">
             一键切换输出格式，基于 mux.js 在浏览器内将 MPEG-TS 重封装为 fragmented MP4，无需
@@ -951,7 +1103,11 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🩺</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-error-title">错误分级诊断</div>
           <div class="feature-desc" data-i18n="feat-error-desc">
             HTTP 状态码智能分类提示：403 建议刷新登录、404 提示链接过期、429 建议降低并发、5xx
@@ -959,7 +1115,12 @@
           </div>
         </div>
         <div class="feature-card reveal">
-          <div class="feature-icon">🔢</div>
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+            </svg>
+          </div>
           <div class="feature-title" data-i18n="feat-grid-title">分片状态网格 &amp; 部分重试</div>
           <div class="feature-desc" data-i18n="feat-grid-desc">
             下载时以点阵实时显示每个分片状态（灰/绿/红），失败后可一键重试失败分片或直接保存已完成部分，不因个别分片失败而前功尽弃。

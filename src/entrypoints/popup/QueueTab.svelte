@@ -84,7 +84,9 @@
           {/if}
         </div>
         {#if item.status === 'pending' || item.status === 'done' || item.status === 'error'}
-          <button class="rm" onclick={() => remove(item.id)} title="移除">×</button>
+          <button class="rm" onclick={() => remove(item.id)} title="移除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
         {/if}
       </li>
     {/each}
@@ -224,17 +226,22 @@
 
   .rm {
     flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
     margin-top: 1px;
     background: none;
     color: var(--text-3);
-    font-size: 14px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition:
       background 0.15s,
       color 0.15s;
+  }
+  .rm svg {
+    width: 12px;
+    height: 12px;
   }
   .rm:hover {
     background: #f871711a;

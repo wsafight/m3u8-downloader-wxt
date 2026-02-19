@@ -108,20 +108,27 @@
 
 <style>
   .seg-grid-section {
+    background: var(--surface, #f8fafc);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: var(--radius-lg, 12px);
+    padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     animation: fadeSlideIn 0.3s ease both;
   }
   .seg-grid-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border, #e2e8f0);
   }
   .seg-grid-title {
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: var(--text-3, #3d5878);
+    color: var(--text-2, #475569);
   }
   .seg-grid-legend {
     display: flex;
@@ -162,19 +169,21 @@
     scrollbar-width: thin;
   }
   .seg-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 1px;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
     flex-shrink: 0;
     transition: background 0.15s;
   }
   .seg-dot.pending {
-    background: var(--surface-3, #162240);
+    background: var(--surface-4, #e2e8f0);
   }
   .seg-dot.ok {
-    background: var(--success, #34d399);
+    background: var(--success, #16a34a);
+    box-shadow: 0 0 2px rgba(22, 163, 74, 0.4);
   }
   .seg-dot.failed {
-    background: var(--error, #f87171);
+    background: var(--error, #dc2626);
+    box-shadow: 0 0 2px rgba(220, 38, 38, 0.4);
   }
 </style>

@@ -79,7 +79,11 @@
     {#each entries as e (e.id)}
       <li class="item">
         <div class="status-icon" class:ok={e.status === 'done'} class:err={e.status !== 'done'}>
-          {#if e.status === 'done'}✓{:else}✗{/if}
+          {#if e.status === 'done'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          {:else}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          {/if}
         </div>
         <div class="info">
           <span class="name" title={e.filename}>{e.filename}</span>
@@ -88,7 +92,9 @@
             · {formatBytes(e.bytes)}{e.segments > 0 ? ` · ${e.segments} ${i18n.t('segs')}` : ''} · {timeAgo(e.doneAt)}
           </span>
         </div>
-        <button class="rm" onclick={() => remove(e.id)} title="删除">×</button>
+        <button class="rm" onclick={() => remove(e.id)} title="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </li>
     {/each}
   </ul>
@@ -185,15 +191,18 @@
   }
 
   .status-icon {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
+  }
+  .status-icon svg {
+    width: 11px;
+    height: 11px;
+    flex-shrink: 0;
   }
   .status-icon.ok {
     background: #34d39920;
@@ -226,16 +235,21 @@
 
   .rm {
     flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
     background: none;
     color: var(--text-3);
-    font-size: 14px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition:
       background 0.15s,
       color 0.15s;
+  }
+  .rm svg {
+    width: 12px;
+    height: 12px;
   }
   .rm:hover {
     background: #f871711a;
