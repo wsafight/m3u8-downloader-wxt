@@ -61,8 +61,14 @@ export class MpdParser {
           '';
         const codecs = as.getAttribute('codecs') ?? '';
 
-        // Only process video streams
-        if (!mimeType.includes('video') && !codecs.includes('avc') && !codecs.includes('hvc')) {
+        // Only process video streams (use startsWith for precise MIME matching; also cover hev = H.265)
+        const isVideoStream =
+          mimeType === '' ||
+          mimeType.startsWith('video/') ||
+          (!mimeType.startsWith('audio/') &&
+            !mimeType.startsWith('text/') &&
+            (codecs.includes('avc') || codecs.includes('hvc') || codecs.includes('hev')));
+        if (!isVideoStream) {
           // Skip non-video unless it's the only AdaptationSet
           if (adaptationSets.length > 1) continue;
         }
@@ -76,7 +82,7 @@ export class MpdParser {
 
         const representations = Array.from(as.getElementsByTagName('Representation'));
         for (const rep of representations) {
-          const parsed = this.parseRepresentation(rep, as, period, periodBaseUrl, baseUrl);
+          const parsed = this.parseRepresentation(rep, as, period, periodBaseUrl, baseUrl, mediaPresentationDuration);
           if (parsed) {
             adaptSet.representations.push(parsed);
             videoReps.push({ rep: parsed, adaptSet });
@@ -136,6 +142,7 @@ export class MpdParser {
     period: Element,
     periodBaseUrl: string,
     docBaseUrl: string,
+    mediaPresentationDuration = 0,
   ): Representation | null {
     const id = rep.getAttribute('id') ?? '';
     const bandwidth = parseInt(rep.getAttribute('bandwidth') ?? '0') || 0;
@@ -153,14 +160,11 @@ export class MpdParser {
       period.getElementsByTagName('SegmentTemplate')[0];
 
     if (segTemplate) {
-      return this.parseSegmentTemplate(segTemplate, {
-        id,
-        bandwidth,
-        width,
-        height,
-        codecs,
-        baseUrl: repBaseUrl,
-      });
+      return this.parseSegmentTemplate(
+        segTemplate,
+        { id, bandwidth, width, height, codecs, baseUrl: repBaseUrl },
+        mediaPresentationDuration,
+      );
     }
 
     // ── SegmentList ──────────────────────────────────────────────
@@ -199,6 +203,7 @@ export class MpdParser {
   private static parseSegmentTemplate(
     tmpl: Element,
     info: { id: string; bandwidth: number; width?: number; height?: number; codecs?: string; baseUrl?: string },
+    mediaPresentationDuration = 0,
   ): Representation {
     const initTmpl = tmpl.getAttribute('initialization');
     const mediaTmpl = tmpl.getAttribute('media') ?? '';
@@ -206,7 +211,7 @@ export class MpdParser {
     const duration = parseInt(tmpl.getAttribute('duration') ?? '0') || 0;
     const startNumber = parseInt(tmpl.getAttribute('startNumber') ?? '1') || 1;
 
-    const durationSec = duration / timescale;
+    const durationSec = duration > 0 && timescale > 0 ? duration / timescale : 0;
     const base = info.baseUrl ?? '';
 
     // ── SegmentTimeline ──────────────────────────────────────────
@@ -234,9 +239,19 @@ export class MpdParser {
         }
       }
     } else if (duration > 0) {
-      // Use Number-based template — we don't know total segments without total duration
-      // Emit a placeholder; real usage needs total duration
-      for (let n = startNumber; n < startNumber + 1000; n++) {
+      // Calculate segment count from mediaPresentationDuration.
+      // For dynamic (live) streams where the duration is unknown, we cannot
+      // enumerate segments in advance — return an empty list and let the caller
+      // handle the live case (e.g. via LiveRecorder polling).
+      if (mediaPresentationDuration <= 0 || durationSec <= 0) {
+        console.warn('[MpdParser] dynamic MPD without mediaPresentationDuration — segment list will be empty; use live recording for this stream');
+        // return early with no segments
+      }
+      const estimatedSegments =
+        mediaPresentationDuration > 0 && durationSec > 0
+          ? Math.ceil(mediaPresentationDuration / durationSec)
+          : 0;
+      for (let n = startNumber; n < startNumber + estimatedSegments; n++) {
         const url = this.fillTemplate(mediaTmpl, {
           RepresentationID: info.id,
           Bandwidth: String(info.bandwidth),
@@ -271,7 +286,7 @@ export class MpdParser {
   ): Representation {
     const timescale = parseInt(segList.getAttribute('timescale') ?? '1') || 1;
     const duration = parseInt(segList.getAttribute('duration') ?? '0') || 0;
-    const durationSec = duration / timescale;
+    const durationSec = duration > 0 && timescale > 0 ? duration / timescale : 0;
     const base = info.baseUrl ?? '';
 
     const initEl = segList.getElementsByTagName('Initialization')[0];
@@ -293,8 +308,31 @@ export class MpdParser {
     };
   }
 
+  /**
+   * Expand DASH SegmentTemplate variables.
+   *
+   * Supported forms per ISO 23009-1:
+   *   $Identifier$          – plain substitution
+   *   $Identifier%0Nd$      – zero-padded decimal  (e.g. $Number%06d$)
+   *
+   * Unknown identifiers are left as-is (not replaced) so callers can detect
+   * unsupported templates rather than silently producing broken URLs.
+   */
   private static fillTemplate(tmpl: string, vars: Record<string, string>): string {
-    return tmpl.replace(/\$([A-Za-z]+)\$/g, (_, key) => vars[key] ?? `$${key}$`);
+    return tmpl.replace(/\$([A-Za-z]+)(?:%([^$]+))?\$/g, (match, key: string, fmt?: string) => {
+      const val = vars[key];
+      if (val === undefined) return match; // preserve unknown identifiers
+
+      if (!fmt) return val;
+
+      // Handle printf-style zero-padded integer: %06d, %05d, %d, etc.
+      const padMatch = fmt.match(/^0*(\d+)[diu]$/);
+      if (padMatch) {
+        return val.padStart(parseInt(padMatch[1], 10), '0');
+      }
+
+      return val; // unrecognised format specifier — use raw value
+    });
   }
 
   private static getBaseUrl(el: Element, fallback: string): string {
@@ -307,7 +345,8 @@ export class MpdParser {
   private static resolveUrl(url: string, base: string): string {
     try {
       return new URL(url, base).href;
-    } catch {
+    } catch (e) {
+      console.warn(`[MpdParser] URL 解析失败: "${url}"（base: "${base}"）`, e);
       return url;
     }
   }

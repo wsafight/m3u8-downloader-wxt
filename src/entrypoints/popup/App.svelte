@@ -7,6 +7,7 @@
   import type { UserSettings } from '../../lib/settings';
   import { MSG } from '../../lib/messages';
   import { i18n } from '../../lib/i18n.svelte';
+  import { guessFilename } from '../../lib/utils';
   import HistoryTab from './HistoryTab.svelte';
   import QueueTab from './QueueTab.svelte';
   import SettingsTab from './SettingsTab.svelte';
@@ -94,24 +95,6 @@
     if (s < 60) return i18n.t('timeAgoSec', s);
     if (s < 3600) return i18n.t('timeAgoMin', Math.floor(s / 60));
     return i18n.t('timeAgoHour', Math.floor(s / 3600));
-  }
-
-  function guessFilename(url: string): string {
-    try {
-      const path = new URL(url).pathname;
-      return (
-        path
-          .split('/')
-          .filter(Boolean)
-          .slice(-2)
-          .join('_')
-          .replace(/\.m3u8.*$/i, '')
-          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, '_')
-          .slice(0, 60) || 'video'
-      );
-    } catch {
-      return 'video';
-    }
   }
 
   const pendingCount = $derived(queue.filter((i) => i.status === 'pending').length);

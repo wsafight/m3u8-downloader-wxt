@@ -25,6 +25,8 @@ export class LiveRecorder {
   private readonly FLUSH_EVERY = 100;
   // Dynamic polling: tracks consecutive empty polls
   private _emptyPollCount = 0;
+  // AES-128 key cache: uri → CryptoKey
+  private _keyCache = new Map<string, CryptoKey>();
 
   constructor(opts: LiveRecorderOptions = {}) {
     this.concurrency = opts.concurrency ?? 4;
@@ -41,6 +43,7 @@ export class LiveRecorder {
   async record(m3u8Url: string): Promise<void> {
     const seen = new Set<string>();
     this._emptyPollCount = 0;
+    this._keyCache.clear();
     this.onStatus('开始录制直播流…', 'ok');
 
     while (!this._stopping) {
@@ -74,18 +77,10 @@ export class LiveRecorder {
       const targetDuration = playlist.targetDuration || 5;
 
       if (playlist.isEndList) {
-        // Process any new segments before exiting
-        for (const seg of playlist.segments.filter((s) => !seen.has(s.url))) {
-          seen.add(seg.url);
-          const buf = await this._downloadSegment(seg);
-          if (!buf) continue;
-          this._pending.push(buf);
-          this._segCount++;
-          this._durationSec += seg.duration;
-          this._bufferedBytes += buf.byteLength;
-          this.onSegmentDone(this._segCount, this._durationSec, this._bufferedBytes);
-          if (this._pending.length >= this.FLUSH_EVERY) this._flush();
-        }
+        // Process any new segments before exiting — download concurrently
+        const finalSegs = playlist.segments.filter((s) => !seen.has(s.url));
+        for (const seg of finalSegs) seen.add(seg.url);
+        await this._downloadConcurrent(finalSegs);
         this.onStatus('直播流已结束', 'ok');
         break;
       }
@@ -104,23 +99,12 @@ export class LiveRecorder {
         continue;
       }
 
-      // Got new segments — reset backoff
+      // Got new segments — reset backoff, download concurrently
       this._emptyPollCount = 0;
-
-      for (const seg of newSegs) {
-        if (this._stopping) break;
-        seen.add(seg.url);
-        // NOTE: segment fetch does NOT use _abortController — we allow in-flight
-        // segments to complete so no data is lost when stop() is called.
-        const buf = await this._downloadSegment(seg);
-        if (!buf) continue;
-        this._pending.push(buf);
-        this._segCount++;
-        this._durationSec += seg.duration;
-        this._bufferedBytes += buf.byteLength;
-        this.onSegmentDone(this._segCount, this._durationSec, this._bufferedBytes);
-        if (this._pending.length >= this.FLUSH_EVERY) this._flush();
-      }
+      // Mark all new segments as seen before launching downloads so that a
+      // subsequent poll (while downloads are in flight) doesn't re-queue them.
+      for (const seg of newSegs) seen.add(seg.url);
+      await this._downloadConcurrent(newSegs);
 
       if (this._stopping) break;
 
@@ -144,6 +128,40 @@ export class LiveRecorder {
     return { bytes: blob.size, segments: this._segCount };
   }
 
+  /**
+   * Download a batch of segments concurrently (up to `this.concurrency` at a
+   * time), then append the results in the *original segment order* so the
+   * output stream stays well-formed.
+   */
+  private async _downloadConcurrent(segs: Segment[]): Promise<void> {
+    if (segs.length === 0) return;
+    const results: Array<ArrayBuffer | null> = new Array(segs.length).fill(null);
+    let cursor = 0;
+
+    const worker = async () => {
+      while (cursor < segs.length && !this._stopping) {
+        const idx = cursor++;
+        results[idx] = await this._downloadSegment(segs[idx]);
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(this.concurrency, segs.length) }, worker),
+    );
+
+    // Append in order so the byte stream is sequentially correct
+    for (let i = 0; i < segs.length; i++) {
+      const buf = results[i];
+      if (!buf) continue;
+      this._pending.push(buf);
+      this._segCount++;
+      this._durationSec += segs[i].duration;
+      this._bufferedBytes += buf.byteLength;
+      this.onSegmentDone(this._segCount, this._durationSec, this._bufferedBytes);
+      if (this._pending.length >= this.FLUSH_EVERY) this._flush();
+    }
+  }
+
   private _flush() {
     if (this._pending.length === 0) return;
     this._chunks.push(new Blob(this._pending));
@@ -164,14 +182,42 @@ export class LiveRecorder {
         // preventing data loss at the end of a recording session.
         const res = await fetch(seg.url, { credentials: 'include', headers });
         if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
-        return await res.arrayBuffer();
+        const data = await res.arrayBuffer();
+        // Decrypt AES-128 encrypted segments if needed
+        if (seg.encryption?.method === 'AES-128') {
+          return await this._decryptAES128(data, seg);
+        }
+        return data;
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
-        if (attempt < this.retries - 1) await this._wait(800 * (attempt + 1));
+        if (attempt < this.retries - 1)
+          await this._wait(Math.min(800 * Math.pow(2, attempt), 10_000));
       }
     }
     this.onStatus(`分片下载失败（${lastError}），已跳过: ${seg.url.slice(-40)}`, 'error');
     return null;
+  }
+
+  /** Decrypt an AES-128 encrypted segment buffer. Keys are cached by URI. */
+  private async _decryptAES128(data: ArrayBuffer, seg: Segment): Promise<ArrayBuffer> {
+    const { uri, iv } = seg.encryption!;
+    if (!uri) throw new Error('AES-128 加密但缺少密钥 URI');
+    let key = this._keyCache.get(uri);
+    if (!key) {
+      const res = await fetch(uri, { credentials: 'include' });
+      if (!res.ok) throw new Error(`密钥请求失败：HTTP ${res.status}`);
+      const keyBytes = new Uint8Array(await res.arrayBuffer());
+      key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
+      this._keyCache.set(uri, key);
+    }
+    const ivBuf = iv ?? this._seqToIV(seg.sequence);
+    return crypto.subtle.decrypt({ name: 'AES-CBC', iv: ivBuf }, key, data);
+  }
+
+  private _seqToIV(seq: number): Uint8Array {
+    const iv = new Uint8Array(16);
+    new DataView(iv.buffer).setUint32(12, seq >>> 0, false);
+    return iv;
   }
 
   private _wait(ms: number): Promise<void> {

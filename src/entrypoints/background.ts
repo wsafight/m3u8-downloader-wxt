@@ -1,4 +1,4 @@
-import type { StreamInfo } from '../lib/types';
+import type { AppMessage, StreamInfo } from '../lib/types';
 import { claimNextPending, updateQueueItem } from '../lib/queue';
 import { MSG } from '../lib/messages';
 
@@ -26,8 +26,15 @@ function addStream(tabId: number, url: string) {
   if (!store.has(tabId)) store.set(tabId, new Map());
   const tab = store.get(tabId)!;
   if (tab.has(url)) return;
+  // Insert with empty title first so the badge updates immediately,
+  // then backfill the page title asynchronously.
   tab.set(url, { url, title: '', detectedAt: Date.now() });
   updateBadge(tabId);
+  chrome.tabs.get(tabId, (t) => {
+    if (chrome.runtime.lastError) return; // tab may have closed
+    const entry = store.get(tabId)?.get(url);
+    if (entry) entry.title = t.title ?? '';
+  });
 }
 
 function updateBadge(tabId: number) {
@@ -59,59 +66,54 @@ export default defineBackground(() => {
   );
 
   // ── Message handling ─────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, respond) => {
-    const tabId: number = sender.tab?.id ?? msg.tabId ?? -1;
+  chrome.runtime.onMessage.addListener((rawMsg, sender, respond) => {
+    const msg = rawMsg as AppMessage;
 
     switch (msg.type) {
-      case MSG.M3U8_DETECTED:
-        if (tabId >= 0) addStream(tabId, msg.url as string);
+      case MSG.M3U8_DETECTED: {
+        const tabId = sender.tab?.id ?? msg.tabId ?? -1;
+        if (tabId >= 0) addStream(tabId, msg.url);
         respond({ ok: true });
         break;
+      }
 
       case MSG.GET_STREAMS:
-        respond({ streams: Array.from(store.get(msg.tabId as number)?.values() ?? []) });
+        respond({ streams: Array.from(store.get(msg.tabId)?.values() ?? []) });
         break;
 
       case MSG.REMOVE_STREAM:
-        store.get(msg.tabId as number)?.delete(msg.url as string);
-        updateBadge(msg.tabId as number);
+        store.get(msg.tabId)?.delete(msg.url);
+        updateBadge(msg.tabId);
         respond({ ok: true });
         break;
 
       case MSG.CLEAR_STREAMS:
-        store.delete(msg.tabId as number);
-        updateBadge(msg.tabId as number);
+        store.delete(msg.tabId);
+        updateBadge(msg.tabId);
         respond({ ok: true });
         break;
 
       // ── Queue messages ────────────────────────────────────────
-      case MSG.ENQUEUE: {
-        processNextQueueItem().catch(() => {});
+      case MSG.ENQUEUE:
+        processNextQueueItem().catch((e) =>
+          console.error('[Queue] processNextQueueItem failed:', e),
+        );
         respond({ ok: true });
         break;
-      }
 
-      case MSG.QUEUE_ITEM_DONE: {
-        const { queueId, status, errorMsg } = msg as {
-          queueId: string;
-          status: string;
-          errorMsg?: string;
-        };
-        updateQueueItem(queueId, { status: status as 'done' | 'error', errorMsg })
-          .then(() => {
-            processNextQueueItem().catch(() => {});
-          })
-          .catch(() => {});
+      case MSG.QUEUE_ITEM_DONE:
+        updateQueueItem(msg.queueId, { status: msg.status, errorMsg: msg.errorMsg })
+          .then(() => processNextQueueItem())
+          .catch((e) => console.error('[Queue] QUEUE_ITEM_DONE handling failed:', e));
         respond({ ok: true });
         break;
-      }
 
-      case MSG.QUEUE_PROGRESS: {
-        const { queueId, progress } = msg as { queueId: string; progress: number };
-        updateQueueItem(queueId, { progress }).catch(() => {});
+      case MSG.QUEUE_PROGRESS:
+        updateQueueItem(msg.queueId, { progress: msg.progress }).catch((e) =>
+          console.error('[Queue] progress update failed:', e),
+        );
         respond({ ok: true });
         break;
-      }
     }
     return true;
   });

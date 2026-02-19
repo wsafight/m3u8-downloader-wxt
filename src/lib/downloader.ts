@@ -1,7 +1,13 @@
 import { M3U8Parser } from './m3u8-parser';
 import { MpdParser } from './mpd-parser';
 import { remuxTsToMp4 } from './remux';
-import type { ByteRange, DownloadCheckpoint, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
+import {
+  cacheSegment,
+  cacheTotalCount,
+  clearCachedSegments,
+  loadCachedSegments,
+} from './segment-cache';
+import type { ByteRange, DownloadCheckpoint, DownloadPhase, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
 
 export interface DownloaderOptions {
   concurrency?: number;
@@ -18,8 +24,16 @@ export interface DownloaderOptions {
     downloadedBytes: number,
   ) => void;
   onStatus?: (msg: string, type?: 'info' | 'ok' | 'warn' | 'error') => void;
+  onPhaseChange?: (phase: DownloadPhase) => void;
   onQualityChoice?: (streams: StreamDef[]) => Promise<StreamDef>;
-  onSegmentStatus?: (statuses: readonly SegmentStatus[]) => void;
+  /** Called once when the total segment count is known, before downloading starts.
+   *  Use this to initialise the segment status grid. */
+  onSegmentCount?: (total: number) => void;
+  /** Called for each individual segment status change (incremental update). */
+  onSegmentStatus?: (index: number, status: SegmentStatus) => void;
+  /** When set, completed segment buffers are persisted to IndexedDB so the
+   *  download can be resumed after an interruption. */
+  cacheKey?: string;
 }
 
 export interface DownloadResult {
@@ -55,8 +69,11 @@ export class M3U8Downloader {
   private audioTrackUrl: string | undefined;
   private onProgress: NonNullable<DownloaderOptions['onProgress']>;
   private onStatus: NonNullable<DownloaderOptions['onStatus']>;
+  private onPhaseChange: DownloaderOptions['onPhaseChange'];
   private onQualityChoice: DownloaderOptions['onQualityChoice'];
+  private onSegmentCount: DownloaderOptions['onSegmentCount'];
   private onSegmentStatus: DownloaderOptions['onSegmentStatus'];
+  private cacheKey: string | undefined;
   private _aborted = false;
   private _abortController: AbortController | null = null;
   private _keyCache = new Map<string, CryptoKey>();
@@ -64,6 +81,7 @@ export class M3U8Downloader {
   // Speed tracking
   private _downloadedBytes = 0;
   private _speedSamples: { t: number; cumBytes: number }[] = [];
+  private _speedSampleHead = 0;
 
   // Per-download state (preserved after completion for retry/savePartial)
   private _segStatuses: SegmentStatus[] = [];
@@ -82,8 +100,11 @@ export class M3U8Downloader {
     this.audioTrackUrl = opts.audioTrackUrl;
     this.onProgress = opts.onProgress ?? (() => {});
     this.onStatus = opts.onStatus ?? (() => {});
+    this.onPhaseChange = opts.onPhaseChange;
     this.onQualityChoice = opts.onQualityChoice;
+    this.onSegmentCount = opts.onSegmentCount;
     this.onSegmentStatus = opts.onSegmentStatus;
+    this.cacheKey = opts.cacheKey;
   }
 
   abort() {
@@ -93,7 +114,7 @@ export class M3U8Downloader {
 
   /** Current per-segment statuses (snapshot copy). */
   get segmentStatuses(): readonly SegmentStatus[] {
-    return [...this._segStatuses];
+    return this._segStatuses;
   }
 
   /** Indices of segments that failed in the last download. */
@@ -110,6 +131,7 @@ export class M3U8Downloader {
     this._initCache.clear();
     this._downloadedBytes = 0;
     this._speedSamples = [];
+    this._speedSampleHead = 0;
 
     this.onStatus('正在获取播放列表…');
     const text = await this.retry(() => this.fetchText(m3u8Url));
@@ -191,27 +213,57 @@ export class M3U8Downloader {
     this._segStatuses = new Array<SegmentStatus>(total).fill('pending');
     this._buffers = new Array<ArrayBuffer | null>(total).fill(null);
 
-    // Notify initial statuses
-    this.onSegmentStatus?.([...this._segStatuses]);
+    // Notify total count so the UI can initialise the segment grid
+    this.onSegmentCount?.(total);
+
+    // ── Restore from IndexedDB cache (resume support) ──────────────
+    let done = 0;
+    if (this.cacheKey) {
+      // Persist total so the resume UI can show progress before playlist parse
+      cacheTotalCount(this.cacheKey, total).catch(() => {});
+      try {
+        const cached = await loadCachedSegments(this.cacheKey, total);
+        if (cached.size > 0) {
+          this.onStatus(`已从缓存恢复 ${cached.size} 个分片，继续下载剩余分片…`, 'ok');
+          for (const [idx, buf] of cached) {
+            this._buffers[idx] = buf;
+            this._segStatuses[idx] = 'ok';
+            done++;
+            // Notify UI for each restored segment (incremental update)
+            this.onSegmentStatus?.(idx, 'ok');
+          }
+        }
+      } catch {
+        // Cache unavailable — start fresh
+      }
+    }
+
+    if (done > 0) {
+      this.onProgress(done / total, done, total, 0, this._downloadedBytes);
+    }
 
     // ── Concurrent download ────────────────────────────────────────
-    let done = 0;
-
     await this.pool(total, async (i) => {
+      // Skip segments already restored from cache
+      if (this._segStatuses[i] === 'ok') return;
       if (this._aborted) throw new Error('已中止');
       try {
         this._buffers[i] = await this.downloadSegment(segments[i]);
         this._segStatuses[i] = 'ok';
         done++;
+        // Persist to cache for future resume
+        if (this.cacheKey) {
+          cacheSegment(this.cacheKey, i, this._buffers[i]!).catch(() => {});
+        }
         this.onProgress(done / total, done, total, this._calcSpeed(), this._downloadedBytes);
-        this.onSegmentStatus?.([...this._segStatuses]);
+        this.onSegmentStatus?.(i, 'ok');
       } catch (e) {
         // Re-throw abort; swallow other errors and mark segment failed
         if (this._aborted || (e instanceof Error && e.message === '已中止')) {
           throw new Error('已中止');
         }
         this._segStatuses[i] = 'failed';
-        this.onSegmentStatus?.([...this._segStatuses]);
+        this.onSegmentStatus?.(i, 'failed');
         this.onStatus(`分片 ${i + 1} 下载失败`, 'warn');
       }
     });
@@ -226,6 +278,7 @@ export class M3U8Downloader {
     }
 
     // ── Merge and save ─────────────────────────────────────────────
+    this.onPhaseChange?.('merging');
     this.onStatus('正在合并分片…');
     return this.mergeAndSave(this._buffers, filename, initBuffer, isFmp4, total);
   }
@@ -241,6 +294,7 @@ export class M3U8Downloader {
     this._aborted = false;
     this._abortController = new AbortController();
     this._speedSamples = [];
+    this._speedSampleHead = 0;
 
     const total = this._pendingSegments.length;
     let okCount = this._segStatuses.filter((s) => s === 'ok').length;
@@ -250,38 +304,34 @@ export class M3U8Downloader {
     // Mark all failed back to pending
     for (const i of failedIdx) {
       this._segStatuses[i] = 'pending';
+      this.onSegmentStatus?.(i, 'pending');
     }
-    this.onSegmentStatus?.([...this._segStatuses]);
 
-    // Pool over only the failed indices
-    let cursor = 0;
-    const run = async () => {
-      while (cursor < failedIdx.length && !this._aborted) {
-        const pos = cursor++;
-        const i = failedIdx[pos];
-        try {
-          this._buffers[i] = await this.downloadSegment(this._pendingSegments[i]);
-          this._segStatuses[i] = 'ok';
-          okCount++;
-          this.onProgress(
-            okCount / total,
-            okCount,
-            total,
-            this._calcSpeed(),
-            this._downloadedBytes,
-          );
-          this.onSegmentStatus?.([...this._segStatuses]);
-        } catch (e) {
-          if (this._aborted || (e instanceof Error && e.message === '已中止')) {
-            throw new Error('已中止');
-          }
-          this._segStatuses[i] = 'failed';
-          this.onSegmentStatus?.([...this._segStatuses]);
-          this.onStatus(`分片 ${i + 1} 重试失败`, 'warn');
+    // Reuse pool() — iterate over positions in failedIdx, not over all segments
+    await this.pool(failedIdx.length, async (pos) => {
+      if (this._aborted) throw new Error('已中止');
+      const i = failedIdx[pos];
+      try {
+        this._buffers[i] = await this.downloadSegment(this._pendingSegments[i]);
+        this._segStatuses[i] = 'ok';
+        okCount++;
+        this.onProgress(
+          okCount / total,
+          okCount,
+          total,
+          this._calcSpeed(),
+          this._downloadedBytes,
+        );
+        this.onSegmentStatus?.(i, 'ok');
+      } catch (e) {
+        if (this._aborted || (e instanceof Error && e.message === '已中止')) {
+          throw new Error('已中止');
         }
+        this._segStatuses[i] = 'failed';
+        this.onSegmentStatus?.(i, 'failed');
+        this.onStatus(`分片 ${i + 1} 重试失败`, 'warn');
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(this.concurrency, failedIdx.length) }, run));
+    });
 
     if (this._aborted) throw new Error('已中止');
 
@@ -291,6 +341,7 @@ export class M3U8Downloader {
       throw new PartialDownloadError(stillFailed);
     }
 
+    this.onPhaseChange?.('merging');
     this.onStatus('重试完成，正在合并…', 'ok');
     return this.mergeAndSave(
       this._buffers,
@@ -343,10 +394,11 @@ export class M3U8Downloader {
     if (initBuffer) parts.push(new Blob([initBuffer]));
     for (let i = 0; i < valid.length; i += MERGE_BATCH) {
       parts.push(new Blob(valid.slice(i, i + MERGE_BATCH)));
-      for (let j = i; j < Math.min(i + MERGE_BATCH, valid.length); j++) {
-        (valid as (ArrayBuffer | null)[])[j] = null;
-      }
     }
+
+    // Release ArrayBuffer references now that Blobs have been constructed.
+    // This allows the GC to reclaim memory before the (potentially slow) remux step.
+    this._buffers = [];
 
     let ext: string;
     let finalBlob: Blob;
@@ -377,6 +429,10 @@ export class M3U8Downloader {
 
     this.onStatus('准备保存文件…');
     await this.saveBlob(finalBlob, `${filename}.${ext}`);
+    // Clear the segment cache now that the file has been saved
+    if (this.cacheKey) {
+      clearCachedSegments(this.cacheKey).catch(() => {});
+    }
     const mb = (finalBlob.size / 1024 / 1024).toFixed(2);
     this.onStatus(`下载完成！${totalSegments} 个分片，${mb} MB`, 'ok');
     return { bytes: finalBlob.size, segments: totalSegments, ext };
@@ -428,9 +484,12 @@ export class M3U8Downloader {
         if (e instanceof DOMException && e.name === 'AbortError') throw new Error('已中止');
         lastErr = e;
         if (i < this.retries - 1) {
-          // 429: honour Retry-After header if present
+          // 429: honour Retry-After header; otherwise use exponential backoff with jitter
           const retryAfterMs = (e as HttpError).retryAfterMs;
-          const delay = retryAfterMs != null ? retryAfterMs : 800 * (i + 1);
+          const delay =
+            retryAfterMs != null
+              ? retryAfterMs
+              : Math.min(800 * Math.pow(2, i), 30_000) + Math.random() * 200;
           await new Promise((r) => setTimeout(r, delay));
         }
       }
@@ -515,14 +574,24 @@ export class M3U8Downloader {
     const now = Date.now();
     this._speedSamples.push({ t: now, cumBytes: this._downloadedBytes });
     const cutoff = now - 4_000;
-    while (this._speedSamples.length > 1 && this._speedSamples[0].t < cutoff) {
-      this._speedSamples.shift();
+    // Advance head past expired samples (O(1) amortised, no array mutation)
+    while (
+      this._speedSampleHead < this._speedSamples.length - 1 &&
+      this._speedSamples[this._speedSampleHead].t < cutoff
+    ) {
+      this._speedSampleHead++;
+    }
+    // Periodically compact the array to prevent unbounded growth
+    if (this._speedSampleHead > 200) {
+      this._speedSamples = this._speedSamples.slice(this._speedSampleHead);
+      this._speedSampleHead = 0;
     }
   }
 
   private _calcSpeed(): number {
-    if (this._speedSamples.length < 2) return 0;
-    const first = this._speedSamples[0];
+    const head = this._speedSampleHead;
+    if (this._speedSamples.length - head < 2) return 0;
+    const first = this._speedSamples[head];
     const last = this._speedSamples[this._speedSamples.length - 1];
     const dt = (last.t - first.t) / 1000;
     if (dt < 0.1) return 0;
@@ -532,8 +601,17 @@ export class M3U8Downloader {
   async saveBlob(blob: Blob, filename: string): Promise<void> {
     const blobUrl = URL.createObjectURL(blob);
     try {
-      await chrome.downloads.download({ url: blobUrl, filename });
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5_000);
+      const downloadId = await chrome.downloads.download({ url: blobUrl, filename });
+      // Revoke only after the browser has fully read the blob (complete or interrupted),
+      // not on a fixed timeout that is too short for large files.
+      const revoke = (delta: chrome.downloads.DownloadDelta) => {
+        if (delta.id !== downloadId) return;
+        if (delta.state?.current === 'complete' || delta.state?.current === 'interrupted') {
+          URL.revokeObjectURL(blobUrl);
+          chrome.downloads.onChanged.removeListener(revoke);
+        }
+      };
+      chrome.downloads.onChanged.addListener(revoke);
     } catch {
       const a = Object.assign(document.createElement('a'), { href: blobUrl, download: filename });
       document.body.appendChild(a);

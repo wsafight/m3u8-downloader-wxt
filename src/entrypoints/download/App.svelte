@@ -8,6 +8,8 @@
   import { i18n } from '../../lib/i18n.svelte';
   import { addHistoryEntry } from '../../lib/history';
   import { MSG } from '../../lib/messages';
+  import { guessFilename, formatSpeed } from '../../lib/utils';
+  import { getCachedProgress, clearCachedSegments, cleanupStaleCaches } from '../../lib/segment-cache';
   import type { DownloadCheckpoint, DownloadPhase, LogEntry, MediaTrack, Segment, SegmentStatus, StreamDef } from '../../lib/types';
   import SegmentRangeSlider from './SegmentRangeSlider.svelte';
   import LogTerminal from './LogTerminal.svelte';
@@ -77,6 +79,9 @@
 
   // ── Init: prefetch playlist ─────────────────────────────────────
   onMount(async () => {
+    // Best-effort cleanup of stale IndexedDB caches (fire-and-forget)
+    cleanupStaleCaches().catch(() => {});
+
     const s = await loadSettings();
     concurrency = s.concurrency;
     convertToMp4 = s.convertToMp4;
@@ -88,15 +93,24 @@
       return;
     }
 
-    // Check for existing checkpoint
-    try {
-      const stored = await chrome.storage.local.get(`checkpoint:${m3u8Url}`);
-      const cp = stored[`checkpoint:${m3u8Url}`] as DownloadCheckpoint | undefined;
-      if (cp && cp.doneIndices.length > 0) {
-        pendingCheckpoint = cp;
+    // Check for cached segments from a previous interrupted download
+    if (m3u8Url) {
+      try {
+        const { count, total } = await getCachedProgress(m3u8Url);
+        if (count > 0) {
+          // Synthesise a checkpoint object so the existing UI shows the resume prompt
+          pendingCheckpoint = {
+            url: m3u8Url,
+            filename: initName || guessFilename(m3u8Url),
+            segmentUrls: [],
+            doneIndices: new Array(count).fill(0),
+            savedAt: Date.now(),
+            cachedTotal: total,
+          } as DownloadCheckpoint & { cachedTotal: number };
+        }
+      } catch {
+        // IndexedDB unavailable — ignore
       }
-    } catch {
-      // storage unavailable — ignore
     }
 
     phase = 'prefetching';
@@ -169,29 +183,9 @@
     }
   }
 
-  const CHECKPOINT_EVERY = 10; // save checkpoint every N completed segments
-
-  async function saveCheckpoint(segmentUrls: string[], doneIndices: number[]) {
-    if (!m3u8Url) return;
-    const cp: DownloadCheckpoint = {
-      url: m3u8Url,
-      filename: filename || 'video',
-      segmentUrls,
-      doneIndices,
-      savedAt: Date.now(),
-    };
-    try {
-      await chrome.storage.local.set({ [`checkpoint:${m3u8Url}`]: cp });
-    } catch {
-      // non-critical
-    }
-  }
-
   async function clearCheckpoint() {
     if (!m3u8Url) return;
-    try {
-      await chrome.storage.local.remove(`checkpoint:${m3u8Url}`);
-    } catch {}
+    await clearCachedSegments(m3u8Url).catch(() => {});
   }
 
   async function startDownload() {
@@ -204,20 +198,14 @@
       startIndex: vodSegments.length > 0 ? rangeStart : undefined,
       endIndex: vodSegments.length > 0 ? rangeEnd : undefined,
       audioTrackUrl: selectedAudio ?? undefined,
+      // Enable IndexedDB-backed resume: segments are persisted as they complete
+      cacheKey: m3u8Url || undefined,
       onProgress(r, done, total, speed, bytes) {
         progress = r;
         segDone = done;
         segTotal = total;
         speedBps = speed;
         dlBytes = bytes;
-        // Save checkpoint every CHECKPOINT_EVERY segments
-        if (done % CHECKPOINT_EVERY === 0 && done > 0) {
-          const doneIdx = downloader!.segmentStatuses
-            .map((s, i) => (s === 'ok' ? i : -1))
-            .filter((i) => i !== -1);
-          const segUrls = vodSegments.slice(rangeStart, rangeEnd + 1).map((s) => s.url);
-          saveCheckpoint(segUrls, doneIdx).catch(() => {});
-        }
         if (queueId)
           chrome.runtime
             .sendMessage({ type: MSG.QUEUE_PROGRESS, queueId, progress: r })
@@ -225,10 +213,15 @@
       },
       onStatus(msg, type = 'info') {
         addLog(msg, (type ?? 'info') as LogEntry['type']);
-        if (msg.includes('合并') || msg.includes('转换')) phase = 'merging';
       },
-      onSegmentStatus(statuses) {
-        segStatuses = [...statuses];
+      onPhaseChange(p) {
+        phase = p;
+      },
+      onSegmentCount(total) {
+        segStatuses = new Array(total).fill('pending');
+      },
+      onSegmentStatus(index, status) {
+        segStatuses[index] = status;
       },
       async onQualityChoice() {
         return selected ?? streams[0];
@@ -434,37 +427,13 @@
 
   // ── Helpers ─────────────────────────────────────────────────────
   function addLog(msg: string, type: LogEntry['type'] = 'info') {
-    const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const now = new Date().toLocaleTimeString(undefined, { hour12: false });
     const entry = { time: now, msg, type };
     logs = logs.length >= 500 ? [...logs.slice(-499), entry] : [...logs, entry];
   }
 
   function qualityLabel(s: StreamDef): string {
     return s.resolution || `${Math.round(s.bandwidth / 1000)}k`;
-  }
-
-  function guessFilename(url: string): string {
-    try {
-      const path = new URL(url).pathname;
-      return (
-        path
-          .split('/')
-          .filter(Boolean)
-          .slice(-2)
-          .join('_')
-          .replace(/\.m3u8.*$/i, '')
-          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, '_')
-          .slice(0, 60) || 'video'
-      );
-    } catch {
-      return 'video';
-    }
-  }
-
-  function formatSpeed(bps: number): string {
-    if (bps <= 0) return '';
-    if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(0)} KB/s`;
-    return `${(bps / 1024 / 1024).toFixed(1)} MB/s`;
   }
 
   function calcEta(total: number, done: number, bytes: number, speed: number): string {
@@ -708,7 +677,7 @@
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 6v6l4 2"/>
           </svg>
-          <span>{i18n.t('resumePrompt')} {i18n.t('resumeDone', pendingCheckpoint.doneIndices.length, pendingCheckpoint.segmentUrls.length)}</span>
+          <span>{i18n.t('resumePrompt')} {i18n.t('resumeDone', pendingCheckpoint.doneIndices.length, (pendingCheckpoint as DownloadCheckpoint & { cachedTotal?: number }).cachedTotal ?? pendingCheckpoint.segmentUrls.length)}</span>
         </div>
         <div class="checkpoint-actions">
           <button class="btn-resume" onclick={start}>{i18n.t('continueDownload')}</button>

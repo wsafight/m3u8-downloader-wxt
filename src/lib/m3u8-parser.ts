@@ -36,12 +36,12 @@ export class M3U8Parser {
       if (line.startsWith('#EXT-X-MEDIA:')) {
         const a = this.parseAttrs(line.slice('#EXT-X-MEDIA:'.length));
         const type = a['TYPE'];
-        const uri = a['URI']?.replace(/^"|"$/g, '');
+        const uri = a['URI'];
         if ((type === 'SUBTITLES' || type === 'AUDIO') && uri) {
           mediaTracks.push({
             type: type as 'SUBTITLES' | 'AUDIO',
-            name: a['NAME']?.replace(/^"|"$/g, '') ?? '',
-            language: a['LANGUAGE']?.replace(/^"|"$/g, ''),
+            name: a['NAME'] ?? '',
+            language: a['LANGUAGE'],
             uri: this.resolve(uri, baseUrl),
           });
         }
@@ -154,7 +154,12 @@ export class M3U8Parser {
   }
 
   private static parseIV(ivStr: string): Uint8Array {
-    const hex = ivStr.replace(/^0[xX]/, '').padStart(32, '0');
+    const raw = ivStr.replace(/^0[xX]/, '');
+    if (raw.length > 32) {
+      console.warn(`[M3U8Parser] IV 值异常（${raw.length} 字符，期望 ≤32），将取末尾 32 字符`);
+    }
+    // padStart handles short values; slice(-32) truncates oversized ones
+    const hex = raw.padStart(32, '0').slice(-32);
     const iv = new Uint8Array(16);
     for (let i = 0; i < 16; i++) iv[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
     return iv;
