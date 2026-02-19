@@ -13,6 +13,8 @@
     failedCount,
     onstart,
     onabort,
+    onpause,
+    onresume,
     onretryfailed,
     onsavepartial,
     onreset,
@@ -27,6 +29,8 @@
     failedCount: number;
     onstart: () => void;
     onabort: () => void;
+    onpause: () => void;
+    onresume: () => void;
     onretryfailed: () => void;
     onsavepartial: () => void;
     onreset: () => void;
@@ -47,7 +51,24 @@
       </svg>
       {phase === 'recording' ? i18n.t('btnStopRec') : i18n.t('btnAbort')}
     </button>
-    {#if phase === 'downloading' && segDone > 0}
+    {#if phase === 'downloading'}
+      <button class="btn-pause" onclick={onpause}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+        {i18n.t('btnPause')}
+      </button>
+    {/if}
+    {#if phase === 'paused'}
+      <button class="btn-resume" onclick={onresume}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+        {i18n.t('btnResume')}
+      </button>
+    {/if}
+    {#if (phase === 'downloading' || phase === 'paused') && segDone > 0}
       <button
         class="btn-save-partial"
         onclick={onsavepartial}
@@ -254,6 +275,59 @@
     transform: translateY(-1px);
   }
   .btn-abort:active {
+    transform: scale(0.97);
+  }
+
+  .btn-pause,
+  .btn-resume {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 13px 28px;
+    border-radius: var(--radius-lg, 12px);
+    font-size: 14px;
+    font-weight: 700;
+    transition:
+      background var(--transition),
+      border-color var(--transition),
+      transform 0.12s,
+      box-shadow var(--transition);
+  }
+  .btn-pause svg,
+  .btn-resume svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .btn-pause {
+    background: var(--surface-2, #111d38);
+    border: 1.5px solid var(--border-hi, #2a4a7a);
+    color: var(--text-2, #7a96ba);
+  }
+  .btn-pause:hover {
+    border-color: var(--accent, #5b9df6);
+    color: var(--accent, #5b9df6);
+    background: var(--accent-glow, #5b9df630);
+    transform: translateY(-1px);
+  }
+  .btn-pause:active {
+    transform: scale(0.97);
+  }
+
+  .btn-resume {
+    background: linear-gradient(135deg, #16a34a, #34d399);
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 20px rgba(22, 163, 74, 0.3);
+  }
+  .btn-resume:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 28px rgba(22, 163, 74, 0.4);
+  }
+  .btn-resume:active {
     transform: scale(0.97);
   }
 

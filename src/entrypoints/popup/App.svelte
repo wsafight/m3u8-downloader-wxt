@@ -17,6 +17,7 @@
   let streams = $state<StreamInfo[]>([]);
   let tabId = $state(-1);
   let manual = $state('');
+  let manualError = $state('');
   let loading = $state(true);
   let activeTab = $state<Tab>('streams');
   let history = $state<HistoryEntry[]>([]);
@@ -46,7 +47,7 @@
 
   async function switchTab(t: Tab) {
     activeTab = t;
-    if (t === 'history' && history.length === 0) history = await getHistory();
+    if (t === 'history') history = await getHistory();
     if (t === 'queue') queue = await getQueue();
   }
 
@@ -60,7 +61,11 @@
     streams = [];
   }
 
-  function openDownload(url: string) {
+  async function openDownload(url: string) {
+    if (settings.autoEnqueue) {
+      await addToQueue(url);
+      return;
+    }
     const q = new URLSearchParams({ url });
     chrome.tabs.create({ url: chrome.runtime.getURL('download.html') + '?' + q });
     window.close();
@@ -74,9 +79,37 @@
     activeTab = 'queue';
   }
 
+  function validateManualUrl(url: string): boolean {
+    if (!url) return false;
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+      const path = u.pathname.toLowerCase();
+      const query = u.search.toLowerCase();
+      // Accept: path ends with .m3u8/.mpd, or query/path contains common stream keywords
+      return (
+        path.endsWith('.m3u8') ||
+        path.endsWith('.mpd') ||
+        path.includes('m3u8') ||
+        path.includes('/manifest') ||
+        path.includes('/playlist') ||
+        query.includes('m3u8') ||
+        query.includes('.mpd') ||
+        query.includes('format=mpd')
+      );
+    } catch {
+      return false;
+    }
+  }
+
   function startManual() {
     const url = manual.trim();
     if (!url) return;
+    if (!validateManualUrl(url)) {
+      manualError = i18n.t('manualUrlInvalid');
+      return;
+    }
+    manualError = '';
     openDownload(url);
   }
 
@@ -121,10 +154,7 @@
   }
 
   async function addSelectedToQueue() {
-    for (const url of selectedUrls) {
-      const fn = guessFilename(url);
-      await enqueueItem(url, fn);
-    }
+    await Promise.all([...selectedUrls].map((url) => enqueueItem(url, guessFilename(url))));
     await chrome.runtime.sendMessage({ type: MSG.ENQUEUE });
     queue = await getQueue();
     selectedUrls = new Set();
@@ -284,13 +314,13 @@
         <ul class="stream-list">
           {#each streams as stream, i (stream.url)}
             {@const info = parseUrl(stream.url)}
-            <li class="stream-card" class:selected={selectedUrls.has(stream.url)} style="animation-delay: {i * 40}ms">
+            <li class="stream-card" class:selected={selectedUrls.has(stream.url)} style="animation-delay: {Math.min(i * 40, 200)}ms">
               <div class="stream-row">
                 <button
                   class="stream-checkbox"
                   class:checked={selectedUrls.has(stream.url)}
                   onclick={() => toggleSelect(stream.url)}
-                  title={selectedUrls.has(stream.url) ? '取消选择' : '选择'}
+                  title={selectedUrls.has(stream.url) ? i18n.t('deselectStream') : i18n.t('selectStream')}
                   aria-label="select stream"
                 >
                   {#if selectedUrls.has(stream.url)}
@@ -405,7 +435,10 @@
 
     <!-- Manual Input -->
     <footer>
-      <div class="input-wrap">
+      {#if manualError}
+        <p class="manual-error">{manualError}</p>
+      {/if}
+      <div class="input-wrap" class:input-wrap-error={!!manualError}>
         <svg
           class="input-icon"
           viewBox="0 0 24 24"
@@ -422,7 +455,9 @@
           bind:value={manual}
           placeholder={i18n.t('manualUrl')}
           spellcheck="false"
+          oninput={() => (manualError = '')}
           onkeydown={(e) => e.key === 'Enter' && startManual()}
+          class:url-input-error={!!manualError}
         />
       </div>
       <button class="btn-go" onclick={startManual} disabled={!manual.trim()} aria-label="开始下载">
@@ -797,11 +832,22 @@
   /* ── Footer ── */
   footer {
     display: flex;
-    gap: 6px;
-    padding: 10px 12px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
     background: var(--bg);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+  }
+  .manual-error {
+    font-size: 10px;
+    color: var(--error);
+    line-height: 1.4;
+    padding: 0 2px;
+  }
+  footer > div {
+    display: flex;
+    gap: 6px;
   }
   .input-wrap {
     flex: 1;
@@ -819,6 +865,13 @@
   .input-wrap:focus-within {
     border-color: var(--accent);
     box-shadow: var(--shadow-glow);
+  }
+  .input-wrap.input-wrap-error {
+    border-color: var(--error);
+  }
+  .input-wrap.input-wrap-error:focus-within {
+    border-color: var(--error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
   }
   .input-icon {
     width: 14px;

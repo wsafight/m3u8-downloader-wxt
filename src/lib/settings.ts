@@ -17,8 +17,11 @@ const DEFAULTS: UserSettings = {
   autoEnqueue: false,
 };
 
+// All keys that loadSettings() should fetch (includes optional fields).
+const ALL_SETTING_KEYS = [...Object.keys(DEFAULTS), 'preferredResolution'];
+
 export async function loadSettings(): Promise<UserSettings> {
-  const stored = await chrome.storage.sync.get(Object.keys(DEFAULTS));
+  const stored = await chrome.storage.sync.get(ALL_SETTING_KEYS);
   return { ...DEFAULTS, ...stored } as UserSettings;
 }
 

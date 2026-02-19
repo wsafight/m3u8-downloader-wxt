@@ -1,10 +1,29 @@
 import { M3U8Parser } from './m3u8-parser';
 import type { Segment } from './types';
 import { M3U8Downloader } from './downloader';
+import { aesDecrypt, importAesKey, seqToIV } from './crypto-utils';
+import { ZH_RECORDER_MESSAGES } from './default-messages';
+
+/** All user-visible status messages emitted by the live recorder.
+ *  Pass a translated object via `LiveRecorderOptions.messages` to support i18n. */
+export interface LiveRecorderMessages {
+  startRecording: string;
+  playlistFailed: (status: number) => string;
+  fetchFailed: (msg: string) => string;
+  streamEnded: string;
+  segmentFailed: (err: string, url: string) => string;
+  mergingRecording: string;
+  recordingDone: (count: number, mb: string) => string;
+  aes128MissingKey: string;
+  keyFetchFailed: (status: number) => string;
+}
+
 
 export interface LiveRecorderOptions {
   concurrency?: number;
   retries?: number;
+  /** Translated status messages. Defaults to Chinese if not provided. */
+  messages?: LiveRecorderMessages;
   onSegmentDone?: (count: number, durationSec: number, bufferedBytes: number) => void;
   onStatus?: (msg: string, type?: 'info' | 'ok' | 'error') => void;
 }
@@ -12,6 +31,7 @@ export interface LiveRecorderOptions {
 export class LiveRecorder {
   private concurrency: number;
   private retries: number;
+  private msgs: LiveRecorderMessages;
   private onSegmentDone: NonNullable<LiveRecorderOptions['onSegmentDone']>;
   private onStatus: NonNullable<LiveRecorderOptions['onStatus']>;
 
@@ -31,6 +51,7 @@ export class LiveRecorder {
   constructor(opts: LiveRecorderOptions = {}) {
     this.concurrency = opts.concurrency ?? 4;
     this.retries = opts.retries ?? 3;
+    this.msgs = opts.messages ?? ZH_RECORDER_MESSAGES;
     this.onSegmentDone = opts.onSegmentDone ?? (() => {});
     this.onStatus = opts.onStatus ?? (() => {});
   }
@@ -41,10 +62,15 @@ export class LiveRecorder {
   }
 
   async record(m3u8Url: string): Promise<void> {
-    const seen = new Set<string>();
+    // Track the highest sequence number processed so far.
+    // Using EXT-X-MEDIA-SEQUENCE is more reliable than URL-based deduplication
+    // because CDNs sometimes rotate segment URLs for the same content.
+    // -1 means "nothing seen yet" — any non-negative sequence passes the filter.
+    let lastSeenSequence = -1;
+
     this._emptyPollCount = 0;
     this._keyCache.clear();
-    this.onStatus('开始录制直播流…', 'ok');
+    this.onStatus(this.msgs.startRecording, 'ok');
 
     while (!this._stopping) {
       let text: string | null = null;
@@ -54,13 +80,13 @@ export class LiveRecorder {
           signal: this._abortController.signal,
         });
         if (res.ok) text = await res.text();
-        else this.onStatus(`播放列表请求失败：HTTP ${res.status}，3 秒后重试`, 'error');
+        else this.onStatus(this.msgs.playlistFailed(res.status), 'error');
       } catch (e) {
         if (this._stopping) break;
         // AbortError is expected when stop() is called; only log unexpected errors
         if ((e as Error)?.name !== 'AbortError') {
           const msg = e instanceof Error ? e.message : String(e);
-          this.onStatus(`拉取播放列表失败：${msg}，3 秒后重试`, 'error');
+          this.onStatus(this.msgs.fetchFailed(msg), 'error');
         }
         await this._wait(3000);
         continue;
@@ -76,34 +102,39 @@ export class LiveRecorder {
 
       const targetDuration = playlist.targetDuration || 5;
 
+      // Filter to segments not yet processed using sequence numbers (O(1) per segment).
+      const newSegs = playlist.segments.filter((s) => s.sequence > lastSeenSequence);
+
       if (playlist.isEndList) {
-        // Process any new segments before exiting — download concurrently
-        const finalSegs = playlist.segments.filter((s) => !seen.has(s.url));
-        for (const seg of finalSegs) seen.add(seg.url);
-        await this._downloadConcurrent(finalSegs);
-        this.onStatus('直播流已结束', 'ok');
+        // Process any remaining new segments before exiting.
+        if (newSegs.length > 0) {
+          lastSeenSequence = newSegs[newSegs.length - 1].sequence;
+          await this._downloadConcurrent(newSegs);
+        }
+        this.onStatus(this.msgs.streamEnded, 'ok');
         break;
       }
-
-      const newSegs = playlist.segments.filter((s) => !seen.has(s.url));
 
       if (newSegs.length === 0) {
         // No new segments — back off exponentially (max targetDuration)
         this._emptyPollCount++;
         if (this._stopping) break;
+        // Start at targetDuration * 125ms so it takes ~4 steps to reach the
+        // full targetDuration cap (vs. the previous 500ms start that capped at step 2).
+        // Steps (targetDuration=5s): 625ms → 1250ms → 2500ms → 5000ms
         const backoff = Math.min(
-          (targetDuration * 500) * Math.pow(2, this._emptyPollCount - 1),
+          (targetDuration * 125) * Math.pow(2, this._emptyPollCount - 1),
           targetDuration * 1000,
         );
         await this._wait(backoff);
         continue;
       }
 
-      // Got new segments — reset backoff, download concurrently
+      // Got new segments — advance sequence cursor, reset backoff, download concurrently.
+      // Advance lastSeenSequence before launching downloads so that concurrent
+      // polls (if any) don't re-queue the same segments.
+      lastSeenSequence = newSegs[newSegs.length - 1].sequence;
       this._emptyPollCount = 0;
-      // Mark all new segments as seen before launching downloads so that a
-      // subsequent poll (while downloads are in flight) doesn't re-queue them.
-      for (const seg of newSegs) seen.add(seg.url);
       await this._downloadConcurrent(newSegs);
 
       if (this._stopping) break;
@@ -114,7 +145,7 @@ export class LiveRecorder {
   }
 
   async saveAs(filename: string): Promise<{ bytes: number; segments: number }> {
-    this.onStatus('正在合并录制内容…');
+    this.onStatus(this.msgs.mergingRecording);
     this._flush(); // flush remaining pending
 
     const mimeType = 'video/mp2t';
@@ -124,7 +155,7 @@ export class LiveRecorder {
     await helper.saveBlob(blob, `${filename}.ts`);
 
     const mb = (blob.size / 1024 / 1024).toFixed(2);
-    this.onStatus(`录制完成！${this._segCount} 片，${mb} MB`, 'ok');
+    this.onStatus(this.msgs.recordingDone(this._segCount, mb), 'ok');
     return { bytes: blob.size, segments: this._segCount };
   }
 
@@ -194,30 +225,31 @@ export class LiveRecorder {
           await this._wait(Math.min(800 * Math.pow(2, attempt), 10_000));
       }
     }
-    this.onStatus(`分片下载失败（${lastError}），已跳过: ${seg.url.slice(-40)}`, 'error');
+    this.onStatus(this.msgs.segmentFailed(lastError, seg.url.slice(-40)), 'error');
     return null;
   }
 
   /** Decrypt an AES-128 encrypted segment buffer. Keys are cached by URI. */
   private async _decryptAES128(data: ArrayBuffer, seg: Segment): Promise<ArrayBuffer> {
     const { uri, iv } = seg.encryption!;
-    if (!uri) throw new Error('AES-128 加密但缺少密钥 URI');
+    if (!uri) throw new Error(this.msgs.aes128MissingKey);
     let key = this._keyCache.get(uri);
     if (!key) {
-      const res = await fetch(uri, { credentials: 'include' });
-      if (!res.ok) throw new Error(`密钥请求失败：HTTP ${res.status}`);
-      const keyBytes = new Uint8Array(await res.arrayBuffer());
-      key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
-      this._keyCache.set(uri, key);
+      let lastStatus = 0;
+      for (let attempt = 0; attempt < this.retries; attempt++) {
+        const res = await fetch(uri, { credentials: 'include' });
+        if (res.ok) {
+          key = await importAesKey(new Uint8Array(await res.arrayBuffer()));
+          this._keyCache.set(uri, key);
+          break;
+        }
+        lastStatus = res.status;
+        if (attempt < this.retries - 1)
+          await this._wait(Math.min(800 * Math.pow(2, attempt), 5_000));
+      }
+      if (!key) throw new Error(this.msgs.keyFetchFailed(lastStatus));
     }
-    const ivBuf = iv ?? this._seqToIV(seg.sequence);
-    return crypto.subtle.decrypt({ name: 'AES-CBC', iv: ivBuf }, key, data);
-  }
-
-  private _seqToIV(seq: number): Uint8Array {
-    const iv = new Uint8Array(16);
-    new DataView(iv.buffer).setUint32(12, seq >>> 0, false);
-    return iv;
+    return aesDecrypt(data, key, iv ?? seqToIV(seg.sequence));
   }
 
   private _wait(ms: number): Promise<void> {

@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
-import { M3U8Downloader, PartialDownloadError } from './downloader';
+import { M3U8Downloader, PartialDownloadError, ABORT_MSG } from './downloader';
+import { ZH_DOWNLOADER_MESSAGES } from './default-messages';
 import type { Segment } from './types';
 
 // ── Minimal stubs ──────────────────────────────────────────────────
@@ -145,11 +146,15 @@ describe('_calcSpeed()', () => {
   it('calculates correct speed from samples', () => {
     const dl = new M3U8Downloader();
     const now = Date.now();
+    // Populate the ring buffer directly: slot 0 = old sample, slot 1 = new sample
     // @ts-ignore
-    dl['_speedSamples'] = [
-      { t: now - 2000, cumBytes: 0 },
-      { t: now, cumBytes: 2_000_000 },
-    ];
+    const buf: Float64Array = dl['_speedBuf'];
+    buf[0] = now - 2000; buf[1] = 0;          // slot 0: 2 s ago, 0 bytes
+    buf[2] = now;        buf[3] = 2_000_000;  // slot 1: now, 2 MB
+    // @ts-ignore
+    dl['_speedWrite'] = 2; // next write at slot 2
+    // @ts-ignore
+    dl['_speedCount'] = 2;
     // @ts-ignore
     const speed = dl['_calcSpeed']();
     expect(speed).toBeCloseTo(1_000_000, -4); // ~1 MB/s
@@ -231,7 +236,7 @@ describe('savePartial()', () => {
       // expected PartialDownloadError
     }
 
-    await expect(dl.savePartial()).rejects.toThrow('没有已成功的分片');
+    await expect(dl.savePartial()).rejects.toThrow(ZH_DOWNLOADER_MESSAGES.noOkSegments);
   });
 });
 
@@ -268,7 +273,7 @@ describe('abort()', () => {
     await Promise.resolve();
     dl.abort();
 
-    await expect(promise).rejects.toThrow('已中止');
+    await expect(promise).rejects.toThrow(ABORT_MSG);
   });
 });
 

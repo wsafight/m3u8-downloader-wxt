@@ -144,22 +144,15 @@ export async function getCachedProgress(
 export async function clearCachedSegments(cacheKey: string): Promise<void> {
   const db = await getDb();
   const prefix = `${cacheKey}:`;
+  const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
 
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
-    const req = store.openCursor(range);
-    req.onsuccess = () => {
-      const cursor = req.result;
-      if (!cursor) {
-        resolve();
-        return;
-      }
-      cursor.delete();
-      cursor.continue();
-    };
-    tx.onerror = () => reject(tx.error);
+    // IDBObjectStore.delete(range) removes all matching keys in one operation,
+    // which is significantly faster than cursor-based per-record deletion.
+    const req = tx.objectStore(STORE).delete(range);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(tx.error);
   });
 }
 

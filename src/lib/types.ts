@@ -63,6 +63,7 @@ export type DownloadPhase =
   | 'idle'
   | 'prefetching'
   | 'downloading'
+  | 'paused'    // segment pool suspended; resume() re-activates it
   | 'merging'
   | 'partial' // download finished but some segments failed; retry available
   | 'recording' // live stream recording in progress
@@ -126,10 +127,17 @@ export interface MediaTrack {
 
 // ── Download Checkpoint (for resume) ─────────────────────────────
 
+/**
+ * In-memory UI state for the resume prompt.
+ * Actual segment data is persisted in IndexedDB via segment-cache.ts;
+ * this object only carries the counts needed to display the resume UI.
+ */
 export interface DownloadCheckpoint {
   url: string;
   filename: string;
-  segmentUrls: string[];
-  doneIndices: number[];
+  /** Number of segments already stored in IndexedDB. */
+  cachedCount: number;
+  /** Total segment count reported by the IndexedDB metadata entry (0 = unknown). */
+  cachedTotal: number;
   savedAt: number;
 }

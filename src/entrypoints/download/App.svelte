@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { M3U8Parser } from '../../lib/m3u8-parser';
+  import { MpdParser } from '../../lib/mpd-parser';
   import { M3U8Downloader, PartialDownloadError } from '../../lib/downloader';
   import { LiveRecorder } from '../../lib/live-recorder';
   import { loadSettings, saveSettings } from '../../lib/settings';
   import type { Lang } from '../../lib/i18n.svelte';
   import { i18n } from '../../lib/i18n.svelte';
+  import { ABORT_MSG } from '../../lib/downloader';
+  import type { DownloaderMessages } from '../../lib/downloader';
+  import type { LiveRecorderMessages } from '../../lib/live-recorder';
   import { addHistoryEntry } from '../../lib/history';
   import { MSG } from '../../lib/messages';
   import { guessFilename, formatSpeed } from '../../lib/utils';
@@ -63,7 +67,7 @@
   // ── Derived ─────────────────────────────────────────────────────
   const pct = $derived(Math.round(progress * 100));
   const isRunning = $derived(
-    ['prefetching', 'downloading', 'merging', 'recording', 'stopping'].includes(phase),
+    ['prefetching', 'downloading', 'paused', 'merging', 'recording', 'stopping'].includes(phase),
   );
   const isPartial = $derived(phase === 'partial');
   const canStart = $derived(!isRunning && !!m3u8Url && (streams.length === 0 || selected !== null));
@@ -72,10 +76,76 @@
   const failedCount = $derived(segStatuses.filter((s) => s === 'failed').length);
   const okCount = $derived(segStatuses.filter((s) => s === 'ok').length);
 
+  // ── i18n message objects for downloader & recorder ──────────────
+  const downloaderMessages = $derived<DownloaderMessages>({
+    fetchingPlaylist: i18n.t('dlFetchingPlaylist'),
+    noStreamsInMaster: i18n.t('dlNoStreamsInMaster'),
+    fetchingStream: (label: string) => i18n.t('dlFetchingStream', label),
+    noSegmentsInMedia: i18n.t('dlNoSegmentsInMedia'),
+    fetchingInitSegment: i18n.t('dlFetchingInitSegment'),
+    segmentInfo: (total: number, fmt: string, dur: string) => i18n.t('dlSegmentInfo', total, fmt, dur),
+    restoredFromCache: (count: number) => i18n.t('dlRestoredFromCache', count),
+    segmentFailed: (index: number) => i18n.t('dlSegmentFailed', index),
+    someSegmentsFailed: (count: number) => i18n.t('dlSomeSegmentsFailed', count),
+    noFailedSegments: i18n.t('dlNoFailedSegments'),
+    retryingFailed: (count: number) => i18n.t('dlRetryingFailed', count),
+    segmentRetryFailed: (index: number) => i18n.t('dlSegmentRetryFailed', index),
+    stillFailed: (count: number) => i18n.t('dlStillFailed', count),
+    retryComplete: i18n.t('dlRetryComplete'),
+    merging: i18n.t('dlMerging'),
+    noOkSegments: i18n.t('dlNoOkSegments'),
+    savingPartial: (count: number) => i18n.t('dlSavingPartial', count),
+    savedPartial: (count: number, mb: string) => i18n.t('dlSavedPartial', count, mb),
+    convertingMp4: i18n.t('dlConvertingMp4'),
+    mp4ConvertDone: i18n.t('dlMp4ConvertDone'),
+    mp4ConvertFailed: (msg: string) => i18n.t('dlMp4ConvertFailed', msg),
+    prepareSave: i18n.t('dlPrepareSave'),
+    downloadComplete: (segs: number, mb: string) => i18n.t('dlDownloadComplete', segs, mb),
+    networkError: (url: string) => i18n.t('dlNetworkError', url),
+    http403: (url: string) => i18n.t('dlHttp403', url),
+    http404: (url: string) => i18n.t('dlHttp404', url),
+    http429: (url: string) => i18n.t('dlHttp429', url),
+    httpServer: (status: number, url: string) => i18n.t('dlHttpServer', status, url),
+    httpGeneric: (status: number, url: string) => i18n.t('dlHttpGeneric', status, url),
+    aes128MissingKey: i18n.t('dlAes128MissingKey'),
+    circuitOpen: (n: number) => i18n.t('dlCircuitOpen', n),
+  });
+
+  const recorderMessages = $derived<LiveRecorderMessages>({
+    startRecording: i18n.t('lrStartRecording'),
+    playlistFailed: (status: number) => i18n.t('lrPlaylistFailed', status),
+    fetchFailed: (msg: string) => i18n.t('lrFetchFailed', msg),
+    streamEnded: i18n.t('lrStreamEnded'),
+    segmentFailed: (err: string, url: string) => i18n.t('lrSegmentFailed', err, url),
+    mergingRecording: i18n.t('lrMergingRecording'),
+    recordingDone: (count: number, mb: string) => i18n.t('lrRecordingDone', count, mb),
+    aes128MissingKey: i18n.t('lrAes128MissingKey'),
+    keyFetchFailed: (status: number) => i18n.t('lrKeyFetchFailed', status),
+  });
+
+  let _settingsReady = $state(false);
   let downloader: M3U8Downloader | null = null;
   let recorder: LiveRecorder | null = null;
   let startedAt = 0;
   let savedExt = $state('ts');
+  // Throttle speed/ETA display to 500 ms so rapid segment completions don't
+  // trigger excessive Svelte re-renders.
+  let _lastSpeedUpdate = 0;
+  const SPEED_UPDATE_INTERVAL = 500;
+
+  // ── Orphan cache cleanup on page close ──────────────────────────
+  // If the user aborted and then closes the tab, clear the session cache so
+  // it doesn't silently restore on the next open. Mid-download closures are
+  // intentionally left intact so the user can resume later.
+  $effect(() => {
+    function onPageHide() {
+      if (phase === 'aborted' && m3u8Url) {
+        clearCachedSegments(m3u8Url).catch(() => {});
+      }
+    }
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  });
 
   // ── Init: prefetch playlist ─────────────────────────────────────
   onMount(async () => {
@@ -89,7 +159,7 @@
     i18n.lang = s.language;
 
     if (!m3u8Url) {
-      addLog('没有 M3U8 地址', 'error');
+      addLog(i18n.t('appNoUrl'), 'error');
       return;
     }
 
@@ -98,15 +168,13 @@
       try {
         const { count, total } = await getCachedProgress(m3u8Url);
         if (count > 0) {
-          // Synthesise a checkpoint object so the existing UI shows the resume prompt
           pendingCheckpoint = {
             url: m3u8Url,
             filename: initName || guessFilename(m3u8Url),
-            segmentUrls: [],
-            doneIndices: new Array(count).fill(0),
-            savedAt: Date.now(),
+            cachedCount: count,
             cachedTotal: total,
-          } as DownloadCheckpoint & { cachedTotal: number };
+            savedAt: Date.now(),
+          };
         }
       } catch {
         // IndexedDB unavailable — ignore
@@ -114,13 +182,16 @@
     }
 
     phase = 'prefetching';
-    addLog('正在预解析播放列表…');
+    addLog(i18n.t('appPreParsing'));
 
     try {
       const res = await fetch(m3u8Url, { credentials: 'include' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
-      const pl = M3U8Parser.parse(text, m3u8Url);
+      const isMpd =
+        m3u8Url.toLowerCase().includes('.mpd') ||
+        (text.trimStart().startsWith('<?xml') && text.includes('<MPD'));
+      const pl = isMpd ? MpdParser.parse(text, m3u8Url) : M3U8Parser.parse(text, m3u8Url);
 
       if (pl.type === 'master' && pl.streams.length > 0) {
         streams = pl.streams;
@@ -138,12 +209,12 @@
         const opts = pl.streams
           .map((s) => s.resolution || `${Math.round(s.bandwidth / 1000)}k`)
           .join(' / ');
-        addLog(`检测到 Master Playlist，${pl.streams.length} 个清晰度：${opts}`, 'ok');
+        addLog(i18n.t('appMasterDetected', pl.streams.length, opts), 'ok');
       } else if (pl.type === 'media') {
         const dur = M3U8Parser.formatDuration(pl.totalDuration);
         isLive = pl.isLive;
         if (pl.isLive) {
-          addLog(`直播流，目标分片时长 ${pl.targetDuration}s`, 'ok');
+          addLog(i18n.t('appLiveDetected', pl.targetDuration), 'ok');
         } else {
           vodSegments = pl.segments;
           rangeStart = 0;
@@ -151,18 +222,21 @@
           if (pl.subtitleTracks && pl.subtitleTracks.length > 0) {
             subtitleTracks = pl.subtitleTracks;
           }
-          addLog(`共 ${pl.segments.length} 个分片，时长约 ${dur}`, 'ok');
+          addLog(i18n.t('appSegmentsFound', pl.segments.length, dur), 'ok');
         }
       }
     } catch (e: unknown) {
-      addLog(`预解析失败：${(e as Error).message}`, 'error');
+      addLog(i18n.t('appPreParseFailed', (e as Error).message), 'error');
     }
 
     phase = 'idle';
+    _settingsReady = true;
   });
 
-  // Persist settings whenever concurrency or convertToMp4 changes
+  // Persist settings when the user changes concurrency or convertToMp4.
+  // _settingsReady guards against a spurious write during onMount initialization.
   $effect(() => {
+    if (!_settingsReady) return;
     saveSettings({ concurrency, convertToMp4 }).catch(() => {});
   });
 
@@ -200,12 +274,18 @@
       audioTrackUrl: selectedAudio ?? undefined,
       // Enable IndexedDB-backed resume: segments are persisted as they complete
       cacheKey: m3u8Url || undefined,
+      messages: downloaderMessages,
       onProgress(r, done, total, speed, bytes) {
         progress = r;
         segDone = done;
         segTotal = total;
-        speedBps = speed;
         dlBytes = bytes;
+        // Throttle speed/ETA display to avoid re-renders on every segment.
+        const now = Date.now();
+        if (now - _lastSpeedUpdate >= SPEED_UPDATE_INTERVAL) {
+          speedBps = speed;
+          _lastSpeedUpdate = now;
+        }
         if (queueId)
           chrome.runtime
             .sendMessage({ type: MSG.QUEUE_PROGRESS, queueId, progress: r })
@@ -236,6 +316,7 @@
       pendingCheckpoint = null;
       await clearCheckpoint();
       await saveHistory('done', result.bytes, result.segments, result.ext);
+      await downloadSubtitleTracks();
       if (queueId)
         chrome.runtime
           .sendMessage({ type: MSG.QUEUE_ITEM_DONE, queueId, status: 'done' })
@@ -245,7 +326,7 @@
       if (e instanceof PartialDownloadError) {
         // Keep downloader alive so retry/savePartial work
         phase = 'partial';
-        addLog(`${e.failedCount} 个分片失败，可重试或保存已完成片段`, 'error');
+        addLog(i18n.t('appPartialFailed', e.failedCount), 'error');
         if (queueId)
           chrome.runtime
             .sendMessage({
@@ -257,10 +338,10 @@
             .catch(() => {});
         return;
       }
-      const msg = (e as Error).message;
-      if (msg === '已中止') {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === ABORT_MSG) {
         phase = 'aborted';
-        addLog('下载已中止', 'error');
+        addLog(i18n.t('appDownloadAborted'), 'error');
         await saveHistory('aborted');
         if (queueId)
           chrome.runtime
@@ -268,13 +349,13 @@
               type: MSG.QUEUE_ITEM_DONE,
               queueId,
               status: 'error',
-              errorMsg: '已中止',
+              errorMsg: ABORT_MSG,
             })
             .catch(() => {});
       } else {
         phase = 'error';
         errorMsg = msg;
-        addLog(`下载失败：${msg}`, 'error');
+        addLog(i18n.t('appDownloadFailed', msg), 'error');
         await saveHistory('error', 0, 0, 'ts', msg);
         if (queueId)
           chrome.runtime
@@ -298,17 +379,17 @@
     } catch (e: unknown) {
       if (e instanceof PartialDownloadError) {
         phase = 'partial';
-        addLog(`仍有 ${e.failedCount} 个分片失败`, 'error');
+        addLog(i18n.t('dlStillFailed', e.failedCount), 'error');
         return;
       }
-      const msg = (e as Error).message;
-      if (msg === '已中止') {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === ABORT_MSG) {
         phase = 'aborted';
-        addLog('重试已中止', 'error');
+        addLog(i18n.t('appRetryAborted'), 'error');
       } else {
         phase = 'error';
         errorMsg = msg;
-        addLog(`重试失败：${msg}`, 'error');
+        addLog(i18n.t('appRetryFailed', msg), 'error');
       }
       downloader = null;
     }
@@ -319,7 +400,7 @@
     try {
       await downloader.savePartial();
     } catch (e: unknown) {
-      addLog(`保存失败：${(e as Error).message}`, 'error');
+      addLog(i18n.t('appSaveFailed', (e as Error).message), 'error');
     }
   }
 
@@ -330,6 +411,7 @@
 
     recorder = new LiveRecorder({
       concurrency,
+      messages: recorderMessages,
       onSegmentDone(count, dur, bytes) {
         recCount = count;
         recDurSec = dur;
@@ -356,7 +438,7 @@
       } catch (e: unknown) {
         phase = 'error';
         errorMsg = (e as Error).message;
-        addLog(`保存失败：${errorMsg}`, 'error');
+        addLog(i18n.t('appSaveFailed', errorMsg), 'error');
       }
     }
 
@@ -373,6 +455,14 @@
       recorder.stop();
       phase = 'stopping';
     }
+  }
+
+  function doPause() {
+    downloader?.pause();
+  }
+
+  function doResume() {
+    downloader?.resume();
   }
 
   function reset() {
@@ -398,6 +488,52 @@
 
   function dismissCheckpoint() {
     pendingCheckpoint = null;
+    // User chose "Start Fresh" — remove stale segments so the next download
+    // doesn't silently restore them from the old interrupted session.
+    if (m3u8Url) clearCachedSegments(m3u8Url).catch(() => {});
+  }
+
+  // ── Subtitle download ───────────────────────────────────────────
+  async function downloadSubtitleTracks(): Promise<void> {
+    if (selectedSubtitles.size === 0) return;
+    for (const track of subtitleTracks) {
+      if (!selectedSubtitles.has(track.uri)) continue;
+      addLog(i18n.t('appSubtitleDownloading', track.name), 'info');
+      try {
+        const res = await fetch(track.uri, { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        const pl = M3U8Parser.parse(text, track.uri);
+        let blob: Blob;
+        if (pl.type === 'media' && pl.segments.length > 0) {
+          // Download VTT segments, then merge — strip duplicate WEBVTT headers
+          const texts = await Promise.all(
+            pl.segments.map(async (seg) => {
+              try {
+                const r = await fetch(seg.url, { credentials: 'include' });
+                return r.ok ? r.text() : Promise.resolve('');
+              } catch {
+                return '';
+              }
+            }),
+          );
+          const merged = texts.reduce((acc, vtt, idx) => {
+            if (!vtt) return acc;
+            return acc + (idx === 0 ? vtt : '\n' + vtt.replace(/^WEBVTT[^\n]*\n*/i, ''));
+          }, '');
+          blob = new Blob([merged], { type: 'text/vtt' });
+        } else {
+          // Direct VTT file
+          blob = new Blob([text], { type: 'text/vtt' });
+        }
+        const subFilename = `${filename || 'video'}_${track.language ?? track.name}.vtt`;
+        const helper = new M3U8Downloader();
+        await helper.saveBlob(blob, subFilename);
+        addLog(i18n.t('appSubtitleDone', track.name), 'ok');
+      } catch (e: unknown) {
+        addLog(i18n.t('appSubtitleFailed', track.name, (e as Error).message), 'warn');
+      }
+    }
   }
 
   // ── History helper ──────────────────────────────────────────────
@@ -471,7 +607,7 @@
       <span>M3U8 <em>Downloader</em></span>
     </div>
     <div class="nav-status">
-      <div class="nav-badge" class:visible={phase === 'downloading' || phase === 'merging'}>
+      <div class="nav-badge" class:visible={phase === 'downloading' || phase === 'paused' || phase === 'merging'}>
         <span class="dot"></span>{pct}%
       </div>
       {#if phase === 'recording'}
@@ -677,7 +813,7 @@
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 6v6l4 2"/>
           </svg>
-          <span>{i18n.t('resumePrompt')} {i18n.t('resumeDone', pendingCheckpoint.doneIndices.length, (pendingCheckpoint as DownloadCheckpoint & { cachedTotal?: number }).cachedTotal ?? pendingCheckpoint.segmentUrls.length)}</span>
+          <span>{i18n.t('resumePrompt')} {i18n.t('resumeDone', pendingCheckpoint.cachedCount, pendingCheckpoint.cachedTotal)}</span>
         </div>
         <div class="checkpoint-actions">
           <button class="btn-resume" onclick={start}>{i18n.t('continueDownload')}</button>
@@ -698,6 +834,8 @@
       {failedCount}
       onstart={start}
       onabort={abort}
+      onpause={doPause}
+      onresume={doResume}
       onretryfailed={doRetryFailed}
       onsavepartial={doSavePartial}
       onreset={reset}

@@ -24,6 +24,7 @@
     switch (p) {
       case 'prefetching': return i18n.t('phasePrefetching');
       case 'downloading': return i18n.t('phaseDownloading');
+      case 'paused':      return i18n.t('phasePaused');
       case 'merging':     return i18n.t('phaseMerging');
       case 'partial':     return i18n.t('phasePartial');
       case 'recording':   return i18n.t('phaseRecording');

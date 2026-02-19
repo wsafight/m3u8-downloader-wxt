@@ -5,6 +5,9 @@ import { MSG } from '../lib/messages';
 // tabId -> Map<url, StreamInfo>
 const store = new Map<number, Map<string, StreamInfo>>();
 
+/** Maximum number of stream URLs tracked per tab. Oldest entries are evicted first. */
+const MAX_STREAMS_PER_TAB = 50;
+
 // Check pathname AND query string so URLs like ?file=video.m3u8 are not missed
 function isStreamUrl(url: string): boolean {
   try {
@@ -26,6 +29,13 @@ function addStream(tabId: number, url: string) {
   if (!store.has(tabId)) store.set(tabId, new Map());
   const tab = store.get(tabId)!;
   if (tab.has(url)) return;
+
+  // Enforce per-tab cap: evict the oldest entry when the limit is reached.
+  if (tab.size >= MAX_STREAMS_PER_TAB) {
+    const oldest = [...tab.values()].reduce((a, b) => (a.detectedAt < b.detectedAt ? a : b));
+    tab.delete(oldest.url);
+  }
+
   // Insert with empty title first so the badge updates immediately,
   // then backfill the page title asynchronously.
   tab.set(url, { url, title: '', detectedAt: Date.now() });
@@ -67,6 +77,7 @@ export default defineBackground(() => {
 
   // ── Message handling ─────────────────────────────────────────
   chrome.runtime.onMessage.addListener((rawMsg, sender, respond) => {
+    if (!rawMsg || typeof rawMsg.type !== 'string') return true;
     const msg = rawMsg as AppMessage;
 
     switch (msg.type) {

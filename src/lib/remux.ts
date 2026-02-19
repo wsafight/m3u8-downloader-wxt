@@ -56,7 +56,7 @@ export async function remuxTsToMp4(tsBlob: Blob): Promise<Blob> {
       if (initSegment) parts.push(initSegment);
       parts.push(...chunks);
       if (parts.length === 0) {
-        reject(new Error('remux 输出为空'));
+        reject(new Error('remux output is empty'));
         return;
       }
       resolve(new Blob(parts, { type: 'video/mp4' }));
@@ -64,7 +64,7 @@ export async function remuxTsToMp4(tsBlob: Blob): Promise<Blob> {
 
     transmuxer.on('error', (err) => {
       transmuxer.dispose?.();
-      reject(new Error(`remux 错误: ${err}`));
+      reject(new Error(`remux error: ${err}`));
     });
 
     try {
