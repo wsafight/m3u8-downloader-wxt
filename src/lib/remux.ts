@@ -27,7 +27,20 @@ interface MuxModule {
   mp4?: { Transmuxer: new (opts?: object) => MuxTransmuxer };
 }
 
+/** Files larger than this threshold are not remuxed to avoid OOM.
+ *  At peak, mux.js keeps ~2-3x the source size in memory simultaneously
+ *  (original ArrayBuffer + transmuxer output chunks). 500 MB is a safe cap
+ *  for typical browser extension environments.
+ *  Caller catches the thrown error and falls back to saving as .ts. */
+const REMUX_SIZE_LIMIT = 500 * 1024 * 1024; // 500 MB
+
 export async function remuxTsToMp4(tsBlob: Blob): Promise<Blob> {
+  if (tsBlob.size > REMUX_SIZE_LIMIT) {
+    throw new Error(
+      `File too large for remux (${(tsBlob.size / 1024 / 1024).toFixed(0)} MB > 500 MB limit) — saving as .ts`,
+    );
+  }
+
   // Dynamic import keeps mux.js out of the main popup/background bundles
   const mux = (await import('mux.js')) as unknown as MuxModule;
   const Transmuxer = mux.default?.mp4?.Transmuxer ?? mux.mp4?.Transmuxer;

@@ -77,7 +77,6 @@ export default defineBackground(() => {
 
   // ── Message handling ─────────────────────────────────────────
   chrome.runtime.onMessage.addListener((rawMsg, sender, respond) => {
-    if (!rawMsg || typeof rawMsg.type !== 'string') return true;
     const msg = rawMsg as AppMessage;
 
     switch (msg.type) {

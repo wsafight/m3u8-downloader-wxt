@@ -75,7 +75,7 @@ export async function loadCachedSegments(
   const prefix = `${cacheKey}:`;
   const metaKey = `${cacheKey}:__meta__`;
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly');
     // Use a key range to scan only entries belonging to this cacheKey
     const range = IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
@@ -96,7 +96,8 @@ export async function loadCachedSegments(
       }
       cursor.continue();
     };
-    req.onerror = () => resolve();
+    req.onerror = () => reject(req.error ?? new Error('IDB cursor read failed'));
+    tx.onerror = () => reject(tx.error ?? new Error('IDB transaction error'));
   });
 
   return result;

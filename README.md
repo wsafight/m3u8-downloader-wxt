@@ -8,28 +8,26 @@ A browser extension that automatically detects and downloads HLS/M3U8 video stre
 
 ## Features
 
-### Core Download
+### Core
 
-- **Automatic detection** — intercepts XHR/Fetch calls, monitors network response headers, and scans the DOM; three parallel detection paths ensure no stream is missed.
-- **Multi-quality selection** — parses HLS master playlists, sorts variants by bandwidth, and lets you pick a quality tier.
-- **AES-128 decryption** — CBC mode, automatic key fetch and caching, supports both explicit IV and sequence-number-derived IV.
-- **fMP4 support** — parses `#EXT-X-MAP` init segments and `#EXT-X-BYTERANGE` byte-range requests; outputs `.mp4` automatically.
-- **Concurrent downloads** — configurable 1–16 threads, automatic retry with exponential backoff, immediate abort of all in-flight requests.
-- **Low-memory merging** — intermediate Blob is flushed every 100 segments and ArrayBuffer references are released to prevent OOM on large files.
-- **TS → MP4 conversion** — toggle to remux MPEG-TS segments into fragmented MP4 in-browser via mux.js, no FFmpeg required; falls back to `.ts` on failure.
+- **Triple auto-detection** — intercepts XHR/Fetch calls, monitors network response headers, and scans the DOM; three parallel paths ensure no stream is missed.
+- **Preview before download** — click ▶ in the stream list to play the stream inside the extension via hls.js; verify content before committing to a download.
+- **AES-128 encrypted streams** — CBC mode, automatic key fetch and caching, supports both explicit IV and sequence-number-derived IV; decryption runs fully in-browser via Web Crypto API.
+- **Multi-quality selection** — parses HLS master playlists, sorts variants by bandwidth, lets you pick 1080p / 720p / 480p or any available tier.
+- **Cookie auto pass-through** — downloads carry the current page's Cookie and Referer automatically, bypassing auth walls on login-required streaming sites with zero config.
+- **Live-stream recording** — auto-detects live streams (no `#EXT-X-ENDLIST`), records with one click, stops and merges into a `.ts` file.
+- **TS → MP4 remux** — toggle to remux MPEG-TS into fragmented MP4 in-browser via mux.js, no FFmpeg required; falls back to `.ts` on failure.
+- **Batch download queue** — add multiple streams from the popup; the background Service Worker processes them in order automatically.
+- **Segment grid & partial retry** — real-time dot grid (grey/green/red) per segment; on partial failure, retry only failed segments or save completed ones immediately.
 
-### Enhanced Capabilities
+### Under the Hood
 
-- **Real-time speed & ETA** — 4-second rolling window for instantaneous speed, dynamic remaining-time estimate.
-- **Segment range selection** — dual-slider to choose start/end segments with timestamp display and estimated clip duration.
-- **Live-stream recording** — auto-detects live streams, records with one click, stops and merges into a `.ts` file.
-- **Batch download queue** — add multiple streams to a queue; the background worker processes them in order automatically.
+- **Real-time speed & ETA** — 4-second rolling window for instantaneous speed and dynamic remaining-time estimate.
+- **Segment range clipping** — dual-slider to choose start/end segments with live timestamp and clip-duration display.
+- **fMP4 & BYTERANGE support** — parses `#EXT-X-MAP` init segments and `#EXT-X-BYTERANGE` requests; full modern HLS compatibility.
 - **Download history** — stores up to 200 records (filename, size, segment count, domain); supports deletion and bulk-clear.
-- **Settings sync** — concurrency and output-format preferences persisted in `chrome.storage.sync` across sessions and devices.
-- **Segment status grid** — real-time dot grid showing per-segment status (grey = pending / green = ok / red = failed); auto-groups segments when count exceeds 400.
-- **Partial save & retry** — on partial failure, retry only failed segments or save completed segments immediately.
-- **Smart error diagnosis** — HTTP status codes categorised intelligently: 403 prompts re-login, 404 flags an expired link, 429 suggests reducing concurrency, 5xx recommends retrying later.
-- **In-popup HLS preview** — click ▶ in the stream list to play the stream live inside the extension via hls.js before downloading.
+- **Smart error diagnosis** — 403 prompts re-login, 404 flags expired links, 429 suggests lower concurrency, 5xx recommends retrying later.
+- **Low-memory merge & sync settings** — Blobs flushed every 100 segments to prevent OOM; concurrency and format preferences persisted via `chrome.storage.sync`.
 
 ---
 

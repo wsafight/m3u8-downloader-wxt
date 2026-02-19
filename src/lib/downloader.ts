@@ -87,6 +87,9 @@ export interface DownloaderOptions {
   /** Abort if this many consecutive segment failures occur (default: 10).
    *  Set to 0 to disable. */
   circuitBreakerThreshold?: number;
+  /** Per-request fetch timeout in milliseconds (default: 30 000).
+   *  Applies to every segment, key, and playlist fetch. */
+  fetchTimeout?: number;
 }
 
 export interface DownloadResult {
@@ -133,6 +136,7 @@ export class M3U8Downloader {
   private onSaveBlob: DownloaderOptions['onSaveBlob'];
   private cacheKey: string | undefined;
   private circuitBreakerThreshold: number;
+  private fetchTimeout: number;
   private _consecutiveFailures = 0;
   private _aborted = false;
   private _paused = false;
@@ -172,6 +176,7 @@ export class M3U8Downloader {
     this.onSegmentStatus = opts.onSegmentStatus;
     this.cacheKey = opts.cacheKey;
     this.circuitBreakerThreshold = opts.circuitBreakerThreshold ?? 10;
+    this.fetchTimeout = opts.fetchTimeout ?? 30_000;
     this.onSaveBlob = opts.onSaveBlob;
   }
 
@@ -180,6 +185,9 @@ export class M3U8Downloader {
     // Unblock all paused workers so they can observe _aborted and exit.
     for (const resolve of this._pauseQueue.splice(0)) resolve();
     this._abortController?.abort();
+    // Release downloaded segment buffers immediately so the GC can reclaim
+    // memory without waiting for the next download page close.
+    this._buffers = [];
   }
 
   /** Suspend new segment fetches (in-flight requests finish naturally). */
@@ -317,8 +325,9 @@ export class M3U8Downloader {
             this.onSegmentStatus?.(idx, 'ok');
           }
         }
-      } catch {
-        // Cache unavailable — start fresh
+      } catch (e) {
+        // Cache unavailable — warn and start fresh
+        this.onStatus(`Resume cache unavailable: ${(e as Error)?.message ?? e}`, 'warn');
       }
     }
 
@@ -610,7 +619,7 @@ export class M3U8Downloader {
   private async fetchText(url: string): Promise<string> {
     let res: Response;
     try {
-      res = await fetch(url, { credentials: 'include', signal: this._abortController?.signal });
+      res = await fetch(url, { credentials: 'include', signal: this._fetchSignal() });
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(ABORT_MSG);
       throw new Error(this.msgs.networkError(this.shortUrl(url)));
@@ -628,7 +637,7 @@ export class M3U8Downloader {
       res = await fetch(url, {
         credentials: 'include',
         headers,
-        signal: this._abortController?.signal,
+        signal: this._fetchSignal(),
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw new Error(ABORT_MSG);
@@ -709,6 +718,19 @@ export class M3U8Downloader {
     const dt = (this._speedBuf[latestSlot * 2] - this._speedBuf[oldestSlot * 2]) / 1000;
     if (dt < 0.1) return 0;
     return (this._speedBuf[latestSlot * 2 + 1] - this._speedBuf[oldestSlot * 2 + 1]) / dt;
+  }
+
+  /**
+   * Returns an AbortSignal that fires on either a user abort or a per-request
+   * timeout, whichever comes first.  A fresh timeout is created on every call
+   * so each fetch() gets its own independent deadline.
+   */
+  private _fetchSignal(): AbortSignal {
+    const timeout = AbortSignal.timeout(this.fetchTimeout);
+    if (this._abortController) {
+      return AbortSignal.any([this._abortController.signal, timeout]);
+    }
+    return timeout;
   }
 
   async saveBlob(blob: Blob, filename: string): Promise<void> {

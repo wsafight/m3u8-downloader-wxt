@@ -22,7 +22,7 @@ export default defineConfig({
   manifest: {
     name: 'M3U8 Stream Downloader',
     description: '高效检测并下载 HLS/M3U8 视频流，支持加密与多清晰度',
-    permissions: ['webRequest', 'downloads', 'storage', 'tabs', 'scripting', 'activeTab'],
+    permissions: ['webRequest', 'downloads', 'storage', 'tabs', 'scripting', 'activeTab', 'notifications'],
     host_permissions: ['<all_urls>'],
     action: {
       default_title: 'M3U8 Downloader',

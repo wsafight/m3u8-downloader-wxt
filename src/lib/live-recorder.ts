@@ -16,6 +16,8 @@ export interface LiveRecorderMessages {
   recordingDone: (count: number, mb: string) => string;
   aes128MissingKey: string;
   keyFetchFailed: (status: number) => string;
+  /** Emitted when the stream is auto-stopped after too many consecutive errors. */
+  tooManyErrors?: (count: number) => string;
 }
 
 
@@ -26,11 +28,14 @@ export interface LiveRecorderOptions {
   messages?: LiveRecorderMessages;
   onSegmentDone?: (count: number, durationSec: number, bufferedBytes: number) => void;
   onStatus?: (msg: string, type?: 'info' | 'ok' | 'error') => void;
+  /** Per-request fetch timeout in milliseconds (default: 30 000). */
+  fetchTimeout?: number;
 }
 
 export class LiveRecorder {
   private concurrency: number;
   private retries: number;
+  private fetchTimeout: number;
   private msgs: LiveRecorderMessages;
   private onSegmentDone: NonNullable<LiveRecorderOptions['onSegmentDone']>;
   private onStatus: NonNullable<LiveRecorderOptions['onStatus']>;
@@ -45,12 +50,16 @@ export class LiveRecorder {
   private readonly FLUSH_EVERY = 100;
   // Dynamic polling: tracks consecutive empty polls
   private _emptyPollCount = 0;
+  // Circuit breaker: stop recording after this many consecutive fetch failures
+  private _consecutiveFetchErrors = 0;
+  private readonly MAX_CONSECUTIVE_FETCH_ERRORS = 10;
   // AES-128 key cache: uri → CryptoKey
   private _keyCache = new Map<string, CryptoKey>();
 
   constructor(opts: LiveRecorderOptions = {}) {
     this.concurrency = opts.concurrency ?? 4;
     this.retries = opts.retries ?? 3;
+    this.fetchTimeout = opts.fetchTimeout ?? 30_000;
     this.msgs = opts.messages ?? ZH_RECORDER_MESSAGES;
     this.onSegmentDone = opts.onSegmentDone ?? (() => {});
     this.onStatus = opts.onStatus ?? (() => {});
@@ -69,6 +78,7 @@ export class LiveRecorder {
     let lastSeenSequence = -1;
 
     this._emptyPollCount = 0;
+    this._consecutiveFetchErrors = 0;
     this._keyCache.clear();
     this.onStatus(this.msgs.startRecording, 'ok');
 
@@ -77,19 +87,33 @@ export class LiveRecorder {
       try {
         const res = await fetch(m3u8Url, {
           credentials: 'include',
-          signal: this._abortController.signal,
+          signal: AbortSignal.any([this._abortController.signal, AbortSignal.timeout(this.fetchTimeout)]),
         });
-        if (res.ok) text = await res.text();
-        else this.onStatus(this.msgs.playlistFailed(res.status), 'error');
+        if (res.ok) {
+          text = await res.text();
+          this._consecutiveFetchErrors = 0; // reset on successful fetch
+        } else {
+          this.onStatus(this.msgs.playlistFailed(res.status), 'error');
+          this._consecutiveFetchErrors++;
+        }
       } catch (e) {
         if (this._stopping) break;
         // AbortError is expected when stop() is called; only log unexpected errors
         if ((e as Error)?.name !== 'AbortError') {
           const msg = e instanceof Error ? e.message : String(e);
           this.onStatus(this.msgs.fetchFailed(msg), 'error');
+          this._consecutiveFetchErrors++;
         }
         await this._wait(3000);
-        continue;
+      }
+
+      // Circuit breaker: auto-stop after too many consecutive fetch failures
+      if (this._consecutiveFetchErrors >= this.MAX_CONSECUTIVE_FETCH_ERRORS) {
+        const msg = this.msgs.tooManyErrors?.(this._consecutiveFetchErrors)
+          ?? `Stream unreachable after ${this._consecutiveFetchErrors} consecutive errors — stopping.`;
+        this.onStatus(msg, 'error');
+        this._stopping = true;
+        break;
       }
 
       if (!text) {
@@ -211,7 +235,7 @@ export class LiveRecorder {
         // Intentionally NOT using _abortController.signal here so that
         // in-flight segment downloads complete even after stop() is called,
         // preventing data loss at the end of a recording session.
-        const res = await fetch(seg.url, { credentials: 'include', headers });
+        const res = await fetch(seg.url, { credentials: 'include', headers, signal: AbortSignal.timeout(this.fetchTimeout) });
         if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
         const data = await res.arrayBuffer();
         // Decrypt AES-128 encrypted segments if needed
@@ -237,7 +261,7 @@ export class LiveRecorder {
     if (!key) {
       let lastStatus = 0;
       for (let attempt = 0; attempt < this.retries; attempt++) {
-        const res = await fetch(uri, { credentials: 'include' });
+        const res = await fetch(uri, { credentials: 'include', signal: AbortSignal.timeout(this.fetchTimeout) });
         if (res.ok) {
           key = await importAesKey(new Uint8Array(await res.arrayBuffer()));
           this._keyCache.set(uri, key);

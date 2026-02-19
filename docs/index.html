@@ -750,6 +750,73 @@
         .features-grid {
           grid-template-columns: 1fr;
         }
+        .tech-list {
+          grid-template-columns: 1fr;
+        }
+        .tech-row:nth-child(odd) {
+          border-right: none;
+        }
+        .tech-row:nth-last-child(-n+2) {
+          border-bottom: 1px solid var(--border);
+        }
+        .tech-row:last-child {
+          border-bottom: none;
+        }
+      }
+
+      /* ── TECH HIGHLIGHTS ── */
+      .tech-bg {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+      .tech-list {
+        max-width: 760px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--bg);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      }
+      .tech-row {
+        display: flex;
+        gap: 14px;
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--border);
+        align-items: flex-start;
+      }
+      .tech-row:nth-child(odd) {
+        border-right: 1px solid var(--border);
+      }
+      .tech-row:nth-last-child(-n+2) {
+        border-bottom: none;
+      }
+      .tech-check {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #dcfce7;
+        border: 1px solid #bbf7d0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--success);
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .tech-row-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 3px;
+      }
+      .tech-row-desc {
+        font-size: 12px;
+        color: var(--text-2);
+        line-height: 1.55;
       }
 
       /* ── REDUCED MOTION ── */
@@ -929,13 +996,14 @@
 
     <!-- FEATURES -->
     <section id="features">
-      <p class="section-label" data-i18n="feat-section-label">功能特性</p>
-      <h2 data-i18n="feat-section-h2">该有的都有</h2>
+      <p class="section-label" data-i18n="feat-section-label">核心功能</p>
+      <h2 data-i18n="feat-section-h2">解决你真正遇到的问题</h2>
       <p class="section-sub" data-i18n="feat-section-sub">
-        从检测到保存，全流程自动处理；录制、队列、历史一应俱全。
+        从自动捕获到一键保存，覆盖加密、登录墙、格式兼容等常见卡点。
       </p>
 
       <div class="features-grid">
+        <!-- 1 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -949,18 +1017,33 @@
             元素，确保不遗漏任何流地址。
           </div>
         </div>
+        <!-- 2 -->
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+          <div class="feature-title" data-i18n="feat-preview-title">下载前在线预览</div>
+          <div class="feature-desc" data-i18n="feat-preview-desc">
+            点击流列表中的播放按钮，基于 hls.js 即时在扩展内播放视频流，确认内容正确再下载，省去重复操作。
+          </div>
+        </div>
+        <!-- 3 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
             </svg>
           </div>
-          <div class="feature-title" data-i18n="feat-aes-title">AES-128 解密</div>
+          <div class="feature-title" data-i18n="feat-aes-title">AES-128 加密流</div>
           <div class="feature-desc" data-i18n="feat-aes-desc">
             自动获取并缓存加密密钥，支持显式 IV 与序列号推导，使用 Web Crypto API
             在浏览器内完成解密，无需额外工具。
           </div>
         </div>
+        <!-- 4 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -977,44 +1060,19 @@
             等任意画质。
           </div>
         </div>
+        <!-- 5 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <div class="feature-title" data-i18n="feat-fmp4-title">fMP4 &amp; BYTERANGE</div>
-          <div class="feature-desc" data-i18n="feat-fmp4-desc">
-            完整支持 #EXT-X-MAP 初始化分片与 #EXT-X-BYTERANGE 字节范围请求，正确处理现代 HLS
-            格式并自动输出 .mp4。
+          <div class="feature-title" data-i18n="feat-cookie-title">Cookie 自动透传</div>
+          <div class="feature-desc" data-i18n="feat-cookie-desc">
+            下载时自动携带当前页面的 Cookie 与 Referer，无需手动配置即可绕过鉴权校验，适配需要登录的流媒体站点。
           </div>
         </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-speed-title">实时速度 &amp; ETA</div>
-          <div class="feature-desc" data-i18n="feat-speed-desc">
-            4 秒滚动窗口计算瞬时下载速度，动态估算剩余时间，让你随时掌握下载进展，不再盲等。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
-              <line x1="20" y1="4" x2="8.12" y2="15.88"/>
-              <line x1="14.47" y1="14.48" x2="20" y2="20"/>
-              <line x1="8.12" y1="8.12" x2="12" y2="12"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-range-title">分片范围选择</div>
-          <div class="feature-desc" data-i18n="feat-range-desc">
-            双滑块精确拖选起止分片，实时显示起止时间戳与选中时长，轻松截取视频中的任意片段。
-          </div>
-        </div>
+        <!-- 6 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1025,10 +1083,23 @@
           </div>
           <div class="feature-title" data-i18n="feat-live-title">直播流录制</div>
           <div class="feature-desc" data-i18n="feat-live-desc">
-            自动识别直播流（无 #EXT-X-ENDLIST），一键切换录制模式，停止后自动合并为 .ts
-            文件保存到本地。
+            自动识别直播流（无 #EXT-X-ENDLIST），一键切换录制模式，停止后自动合并为 .ts 文件保存到本地。
           </div>
         </div>
+        <!-- 7 -->
+        <div class="feature-card reveal">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
+              <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+            </svg>
+          </div>
+          <div class="feature-title" data-i18n="feat-remux-title">TS → MP4 重封装</div>
+          <div class="feature-desc" data-i18n="feat-remux-desc">
+            一键切换输出格式，基于 mux.js 在浏览器内将 MPEG-TS 重封装为 MP4，无需 FFmpeg，可直接在 VLC、手机、Windows 播放器中播放。
+          </div>
+        </div>
+        <!-- 8 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1040,80 +1111,7 @@
             在弹窗中将多个流一键加入队列，后台 Service Worker 依次自动处理，无需手动守候每一个任务。
           </div>
         </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-history-title">下载历史</div>
-          <div class="feature-desc" data-i18n="feat-history-desc">
-            自动记录最近 200 条下载记录，包含文件名、大小、分片数、域名，随时回溯已下载内容。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="6" height="6"/>
-              <path d="M15 9V5H9v4M9 15v4h6v-4M15 15h4V9h-4M9 9H5v6h4"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-memory-title">低内存合并 &amp; 持久设置</div>
-          <div class="feature-desc" data-i18n="feat-memory-desc">
-            每 100 段批次合并 Blob 并释放 ArrayBuffer，避免 OOM；并发线程数通过 storage.sync
-            跨会话保存。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-cookie-title">请求头自动透传</div>
-          <div class="feature-desc" data-i18n="feat-cookie-desc">
-            下载时自动携带当前页面的 Cookie 与
-            Referer，无需手动配置即可绕过鉴权校验，适配需要登录的流媒体站点。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-preview-title">弹窗在线预览</div>
-          <div class="feature-desc" data-i18n="feat-preview-desc">
-            点击流列表中的播放按钮，基于 hls.js
-            即时在扩展内播放视频流，下载前先看内容是否正确，省去重复下载的麻烦。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
-              <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-remux-title">TS → MP4 重封装</div>
-          <div class="feature-desc" data-i18n="feat-remux-desc">
-            一键切换输出格式，基于 mux.js 在浏览器内将 MPEG-TS 重封装为 fragmented MP4，无需
-            FFmpeg，输出文件可直接在 VLC、手机、Windows 媒体播放器中播放。
-          </div>
-        </div>
-        <div class="feature-card reveal">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-          </div>
-          <div class="feature-title" data-i18n="feat-error-title">错误分级诊断</div>
-          <div class="feature-desc" data-i18n="feat-error-desc">
-            HTTP 状态码智能分类提示：403 建议刷新登录、404 提示链接过期、429 建议降低并发、5xx
-            提示稍后重试，不再面对晦涩错误码茫然无措。
-          </div>
-        </div>
+        <!-- 9 -->
         <div class="feature-card reveal">
           <div class="feature-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1121,9 +1119,74 @@
               <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
             </svg>
           </div>
-          <div class="feature-title" data-i18n="feat-grid-title">分片状态网格 &amp; 部分重试</div>
+          <div class="feature-title" data-i18n="feat-grid-title">分片网格 &amp; 部分重试</div>
           <div class="feature-desc" data-i18n="feat-grid-desc">
             下载时以点阵实时显示每个分片状态（灰/绿/红），失败后可一键重试失败分片或直接保存已完成部分，不因个别分片失败而前功尽弃。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TECH HIGHLIGHTS -->
+    <section id="tech" class="tech-bg">
+      <p class="section-label" data-i18n="tech-section-label">技术亮点</p>
+      <h2 data-i18n="tech-section-h2">引擎盖下的更多能力</h2>
+      <p class="section-sub" data-i18n="tech-section-sub">
+        更稳定、更高效的底层实现，让下载体验更丝滑。
+      </p>
+      <div class="tech-list reveal">
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-speed-title">实时速度 &amp; ETA</div>
+            <div class="tech-row-desc" data-i18n="tech-speed-desc">4 秒滚动窗口计算瞬时速度，动态估算剩余时间，不再盲等。</div>
+          </div>
+        </div>
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-range-title">分片范围剪切</div>
+            <div class="tech-row-desc" data-i18n="tech-range-desc">双滑块精确拖选起止分片，实时显示时间戳与选中时长。</div>
+          </div>
+        </div>
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-fmp4-title">fMP4 &amp; BYTERANGE 支持</div>
+            <div class="tech-row-desc" data-i18n="tech-fmp4-desc">#EXT-X-MAP 初始化分片与字节范围请求，完整兼容现代 HLS 格式。</div>
+          </div>
+        </div>
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-history-title">下载历史记录</div>
+            <div class="tech-row-desc" data-i18n="tech-history-desc">自动记录最近 200 条，含文件名、大小、分片数、域名，随时回溯。</div>
+          </div>
+        </div>
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-error-title">错误分级诊断</div>
+            <div class="tech-row-desc" data-i18n="tech-error-desc">403 / 404 / 429 / 5xx 各自给出明确操作建议，不再面对晦涩错误码。</div>
+          </div>
+        </div>
+        <div class="tech-row">
+          <div class="tech-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <div class="tech-row-title" data-i18n="tech-memory-title">低内存合并 &amp; 设置同步</div>
+            <div class="tech-row-desc" data-i18n="tech-memory-desc">每 100 段批次释放 ArrayBuffer，防止 OOM；线程数通过 storage.sync 跨会话保存。</div>
           </div>
         </div>
       </div>
@@ -1256,54 +1319,51 @@
           'stat-3-label': '并发线程',
           'stat-4-val': 'TS &amp; MP4',
           'stat-4-label': '输出格式',
-          'feat-section-label': '功能特性',
-          'feat-section-h2': '该有的都有',
-          'feat-section-sub': '从检测到保存，全流程自动处理；录制、队列、历史一应俱全。',
+          'feat-section-label': '核心功能',
+          'feat-section-h2': '解决你真正遇到的问题',
+          'feat-section-sub': '从自动捕获到一键保存，覆盖加密、登录墙、格式兼容等常见卡点。',
           'feat-detect-title': '三路自动检测',
           'feat-detect-desc':
             '同时拦截页面 XHR/Fetch 请求、监听网络响应 Content-Type、扫描 DOM 中的 &lt;video&gt; 元素，确保不遗漏任何流地址。',
-          'feat-aes-title': 'AES-128 解密',
+          'feat-aes-title': 'AES-128 加密流',
           'feat-aes-desc':
             '自动获取并缓存加密密钥，支持显式 IV 与序列号推导，使用 Web Crypto API 在浏览器内完成解密，无需额外工具。',
           'feat-quality-title': '多清晰度选择',
           'feat-quality-desc':
             '解析 Master Playlist，按带宽从高到低排序，下载前可手动选择 1080p / 720p / 480p 等任意画质。',
-          'feat-fmp4-title': 'fMP4 &amp; BYTERANGE',
-          'feat-fmp4-desc':
-            '完整支持 #EXT-X-MAP 初始化分片与 #EXT-X-BYTERANGE 字节范围请求，正确处理现代 HLS 格式并自动输出 .mp4。',
-          'feat-speed-title': '实时速度 &amp; ETA',
-          'feat-speed-desc':
-            '4 秒滚动窗口计算瞬时下载速度，动态估算剩余时间，让你随时掌握下载进展，不再盲等。',
-          'feat-range-title': '分片范围选择',
-          'feat-range-desc':
-            '双滑块精确拖选起止分片，实时显示起止时间戳与选中时长，轻松截取视频中的任意片段。',
           'feat-live-title': '直播流录制',
           'feat-live-desc':
             '自动识别直播流（无 #EXT-X-ENDLIST），一键切换录制模式，停止后自动合并为 .ts 文件保存到本地。',
           'feat-queue-title': '批量下载队列',
           'feat-queue-desc':
             '在弹窗中将多个流一键加入队列，后台 Service Worker 依次自动处理，无需手动守候每一个任务。',
-          'feat-history-title': '下载历史',
-          'feat-history-desc':
-            '自动记录最近 200 条下载记录，包含文件名、大小、分片数、域名，随时回溯已下载内容。',
-          'feat-memory-title': '低内存合并 &amp; 持久设置',
-          'feat-memory-desc':
-            '每 100 段批次合并 Blob 并释放 ArrayBuffer，避免 OOM；并发线程数通过 storage.sync 跨会话保存。',
-          'feat-cookie-title': '请求头自动透传',
+          'feat-cookie-title': 'Cookie 自动透传',
           'feat-cookie-desc':
             '下载时自动携带当前页面的 Cookie 与 Referer，无需手动配置即可绕过鉴权校验，适配需要登录的流媒体站点。',
-          'feat-preview-title': '弹窗在线预览',
+          'feat-preview-title': '下载前在线预览',
           'feat-preview-desc':
-            '点击流列表中的播放按钮，基于 hls.js 即时在扩展内播放视频流，下载前先看内容是否正确，省去重复下载的麻烦。',
+            '点击流列表中的播放按钮，基于 hls.js 即时在扩展内播放视频流，确认内容正确再下载，省去重复操作。',
           'feat-remux-title': 'TS → MP4 重封装',
           'feat-remux-desc':
-            '一键切换输出格式，基于 mux.js 在浏览器内将 MPEG-TS 重封装为 fragmented MP4，无需 FFmpeg，输出文件可直接在 VLC、手机、Windows 媒体播放器中播放。',
-          'feat-error-title': '错误分级诊断',
-          'feat-error-desc':
-            'HTTP 状态码智能分类提示：403 建议刷新登录、404 提示链接过期、429 建议降低并发、5xx 提示稍后重试，不再面对晦涩错误码茫然无措。',
-          'feat-grid-title': '分片状态网格 &amp; 部分重试',
+            '一键切换输出格式，基于 mux.js 在浏览器内将 MPEG-TS 重封装为 MP4，无需 FFmpeg，可直接在 VLC、手机、Windows 播放器中播放。',
+          'feat-grid-title': '分片网格 &amp; 部分重试',
           'feat-grid-desc':
             '下载时以点阵实时显示每个分片状态（灰/绿/红），失败后可一键重试失败分片或直接保存已完成部分，不因个别分片失败而前功尽弃。',
+          'tech-section-label': '技术亮点',
+          'tech-section-h2': '引擎盖下的更多能力',
+          'tech-section-sub': '更稳定、更高效的底层实现，让下载体验更丝滑。',
+          'tech-speed-title': '实时速度 &amp; ETA',
+          'tech-speed-desc': '4 秒滚动窗口计算瞬时速度，动态估算剩余时间，不再盲等。',
+          'tech-range-title': '分片范围剪切',
+          'tech-range-desc': '双滑块精确拖选起止分片，实时显示时间戳与选中时长。',
+          'tech-fmp4-title': 'fMP4 &amp; BYTERANGE 支持',
+          'tech-fmp4-desc': '#EXT-X-MAP 初始化分片与字节范围请求，完整兼容现代 HLS 格式。',
+          'tech-history-title': '下载历史记录',
+          'tech-history-desc': '自动记录最近 200 条，含文件名、大小、分片数、域名，随时回溯。',
+          'tech-error-title': '错误分级诊断',
+          'tech-error-desc': '403 / 404 / 429 / 5xx 各自给出明确操作建议，不再面对晦涩错误码。',
+          'tech-memory-title': '低内存合并 &amp; 设置同步',
+          'tech-memory-desc': '每 100 段批次释放 ArrayBuffer，防止 OOM；线程数通过 storage.sync 跨会话保存。',
           'how-section-label': '使用方式',
           'how-section-h2': '四步完成下载',
           'how-section-sub': '打开任何带有视频的页面，扩展自动完成检测与下载。',
@@ -1351,54 +1411,51 @@
           'stat-4-val': 'TS &amp; MP4',
           'stat-4-label': 'Output Formats',
           'feat-section-label': 'Features',
-          'feat-section-h2': 'Everything You Need',
+          'feat-section-h2': 'Solve Real Download Problems',
           'feat-section-sub':
-            'Fully automated from detection to save — recording, queue, and history all included.',
-          'feat-detect-title': 'Triple Detection',
+            'From auto-capture to one-click save — handles encryption, auth walls, and format compatibility.',
+          'feat-detect-title': 'Triple Auto-Detection',
           'feat-detect-desc':
             'Intercepts XHR/Fetch calls, monitors network response Content-Type headers, and scans DOM &lt;video&gt; elements simultaneously — no stream slips through.',
-          'feat-aes-title': 'AES-128 Decryption',
+          'feat-aes-title': 'AES-128 Encrypted Streams',
           'feat-aes-desc':
             'Automatically fetches and caches encryption keys, supports explicit IV and sequence-number-derived IV. Decryption runs in-browser via Web Crypto API.',
           'feat-quality-title': 'Multi-Quality Selection',
           'feat-quality-desc':
             'Parses HLS master playlists, sorts by bandwidth, and lets you choose 1080p, 720p, 480p or any available quality before downloading.',
-          'feat-fmp4-title': 'fMP4 &amp; BYTERANGE',
-          'feat-fmp4-desc':
-            'Full support for #EXT-X-MAP init segments and #EXT-X-BYTERANGE requests. Correctly handles modern HLS streams and automatically outputs .mp4.',
-          'feat-speed-title': 'Real-Time Speed &amp; ETA',
-          'feat-speed-desc':
-            'A 4-second rolling window computes instantaneous download speed and dynamically estimates remaining time — always know where you stand.',
-          'feat-range-title': 'Segment Range Selection',
-          'feat-range-desc':
-            'Dual-slider to precisely pick start/end segments, with live timestamp and duration display. Easily clip any portion of a video.',
           'feat-live-title': 'Live Stream Recording',
           'feat-live-desc':
             'Auto-detects live streams (no #EXT-X-ENDLIST), switches to recording mode with one click, and merges everything into a .ts file on stop.',
           'feat-queue-title': 'Batch Download Queue',
           'feat-queue-desc':
             'Add multiple streams to a queue from the popup. The background Service Worker processes them in order — no babysitting required.',
-          'feat-history-title': 'Download History',
-          'feat-history-desc':
-            'Automatically stores up to 200 download records including filename, size, segment count, and domain. Review past downloads anytime.',
-          'feat-memory-title': 'Low-Memory Merge &amp; Sync Settings',
-          'feat-memory-desc':
-            'Blobs are flushed every 100 segments and ArrayBuffers released to prevent OOM. Concurrency and format preference are persisted via storage.sync.',
-          'feat-cookie-title': 'Cookie &amp; Referer Pass-Through',
+          'feat-cookie-title': 'Cookie Auto Pass-Through',
           'feat-cookie-desc':
             "Downloads automatically carry the current page's Cookie and Referer headers, bypassing auth checks on login-required streaming sites with no extra config.",
-          'feat-preview-title': 'In-Popup HLS Preview',
+          'feat-preview-title': 'Preview Before Download',
           'feat-preview-desc':
             'Click the play button in the stream list to instantly preview the stream via hls.js inside the extension — verify content before downloading.',
           'feat-remux-title': 'TS → MP4 Remux',
           'feat-remux-desc':
             'Toggle to remux MPEG-TS segments into fragmented MP4 in-browser via mux.js. No FFmpeg needed. Output plays in VLC, mobile, and Windows Media Player.',
-          'feat-error-title': 'Smart Error Diagnosis',
-          'feat-error-desc':
-            'HTTP status codes are intelligently categorised: 403 prompts re-login, 404 flags expired links, 429 suggests lower concurrency, 5xx recommends retrying later.',
           'feat-grid-title': 'Segment Grid &amp; Partial Retry',
           'feat-grid-desc':
             'A real-time dot grid shows per-segment status (grey/green/red). On failure, retry only failed segments or save completed ones immediately.',
+          'tech-section-label': 'Under the Hood',
+          'tech-section-h2': 'More Capabilities, Less Noise',
+          'tech-section-sub': 'Solid engineering behind every download.',
+          'tech-speed-title': 'Real-Time Speed &amp; ETA',
+          'tech-speed-desc': 'A 4-second rolling window computes instant speed and remaining time — always know where you stand.',
+          'tech-range-title': 'Segment Range Clipping',
+          'tech-range-desc': 'Dual-slider to pick start/end segments with live timestamp and duration display.',
+          'tech-fmp4-title': 'fMP4 &amp; BYTERANGE Support',
+          'tech-fmp4-desc': '#EXT-X-MAP init segments and byte-range requests — full modern HLS compatibility.',
+          'tech-history-title': 'Download History',
+          'tech-history-desc': 'Stores up to 200 records with filename, size, segment count, and domain.',
+          'tech-error-title': 'Smart Error Diagnosis',
+          'tech-error-desc': '403 / 404 / 429 / 5xx each give clear actionable advice — no more cryptic error codes.',
+          'tech-memory-title': 'Low-Memory Merge &amp; Sync Settings',
+          'tech-memory-desc': 'Blobs flushed every 100 segments to prevent OOM. Concurrency persisted via storage.sync.',
           'how-section-label': 'How It Works',
           'how-section-h2': 'Four Steps to Download',
           'how-section-sub':

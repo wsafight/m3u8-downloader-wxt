@@ -121,6 +121,7 @@
     recordingDone: (count: number, mb: string) => i18n.t('lrRecordingDone', count, mb),
     aes128MissingKey: i18n.t('lrAes128MissingKey'),
     keyFetchFailed: (status: number) => i18n.t('lrKeyFetchFailed', status),
+    tooManyErrors: (n: number) => i18n.t('lrTooManyErrors', n),
   });
 
   let _settingsReady = $state(false);
@@ -316,6 +317,7 @@
       pendingCheckpoint = null;
       await clearCheckpoint();
       await saveHistory('done', result.bytes, result.segments, result.ext);
+      notifyComplete(filename || 'video', result.segments, result.bytes, result.ext);
       await downloadSubtitleTracks();
       if (queueId)
         chrome.runtime
@@ -375,6 +377,7 @@
       phase = 'done';
       progress = 1;
       await saveHistory('done', result.bytes, result.segments, result.ext);
+      notifyComplete(filename || 'video', result.segments, result.bytes, result.ext);
       downloader = null;
     } catch (e: unknown) {
       if (e instanceof PartialDownloadError) {
@@ -435,6 +438,7 @@
         const result = await recorder.saveAs(filename || 'recording');
         phase = 'done';
         await saveHistory('done', result.bytes, result.segments, 'ts');
+        notifyComplete(filename || 'recording', result.segments, result.bytes, 'ts');
       } catch (e: unknown) {
         phase = 'error';
         errorMsg = (e as Error).message;
@@ -564,8 +568,28 @@
   // ── Helpers ─────────────────────────────────────────────────────
   function addLog(msg: string, type: LogEntry['type'] = 'info') {
     const now = new Date().toLocaleTimeString(undefined, { hour12: false });
-    const entry = { time: now, msg, type };
-    logs = logs.length >= 500 ? [...logs.slice(-499), entry] : [...logs, entry];
+    // Mutate in-place and reassign to trigger Svelte reactivity without
+    // allocating a new array on every call (important during high-throughput
+    // downloads where hundreds of log entries may arrive per second).
+    if (logs.length >= 500) logs.splice(0, logs.length - 499);
+    logs.push({ time: now, msg, type });
+    logs = logs;
+  }
+
+  function notifyComplete(fname: string, segments: number, bytes: number, ext: string) {
+    try {
+      const mb = (bytes / 1024 / 1024).toFixed(1);
+      const title = i18n.lang === 'zh' ? '下载完成' : 'Download Complete';
+      const message = `${fname}.${ext}  ·  ${segments} 片  ·  ${mb} MB`;
+      chrome.notifications.create(`dl_done_${Date.now()}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon/128.png'),
+        title,
+        message,
+      });
+    } catch {
+      // Notifications permission may not be granted in all environments
+    }
   }
 
   function qualityLabel(s: StreamDef): string {
