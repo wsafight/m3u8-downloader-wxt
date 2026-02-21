@@ -109,6 +109,9 @@
     httpGeneric: (status: number, url: string) => i18n.t('dlHttpGeneric', status, url),
     aes128MissingKey: i18n.t('dlAes128MissingKey'),
     circuitOpen: (n: number) => i18n.t('dlCircuitOpen', n),
+    audioTrackDownloading: i18n.t('dlAudioTrackDownloading'),
+    audioTrackDone: i18n.t('dlAudioTrackDone'),
+    audioTrackFailed: (msg: string) => i18n.t('dlAudioTrackFailed', msg),
   });
 
   const recorderMessages = $derived<LiveRecorderMessages>({

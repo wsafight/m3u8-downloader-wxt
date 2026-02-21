@@ -77,6 +77,10 @@ export async function remuxTsToMp4(tsBlob: Blob): Promise<Blob> {
 
     transmuxer.on('error', (err) => {
       transmuxer.dispose?.();
+      // Explicitly release chunk buffers so GC can reclaim memory immediately
+      // even if the transmuxer still holds internal references after dispose().
+      chunks.length = 0;
+      initSegment = null;
       reject(new Error(`remux error: ${err}`));
     });
 
@@ -85,6 +89,8 @@ export async function remuxTsToMp4(tsBlob: Blob): Promise<Blob> {
       transmuxer.flush();
     } catch (e) {
       transmuxer.dispose?.();
+      chunks.length = 0;
+      initSegment = null;
       reject(e);
     }
   });

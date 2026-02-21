@@ -48,6 +48,9 @@ export interface DownloaderMessages {
   httpGeneric: (status: number, url: string) => string;
   aes128MissingKey: string;
   circuitOpen: (n: number) => string;
+  audioTrackDownloading: string;
+  audioTrackDone: string;
+  audioTrackFailed: (msg: string) => string;
 }
 
 
@@ -267,7 +270,11 @@ export class M3U8Downloader {
     const end = Math.min(allSegs.length - 1, this.endIndex ?? allSegs.length - 1);
     const segments = allSegs.slice(start, end + 1);
 
-    return this.downloadSegments(segments, filename, playlist.initSegment, playlist.isFmp4);
+    const result = await this.downloadSegments(segments, filename, playlist.initSegment, playlist.isFmp4);
+    if (this.audioTrackUrl && !this._aborted) {
+      await this._downloadAudioTrack(this.audioTrackUrl, filename);
+    }
+    return result;
   }
 
   /** Download a pre-sliced segment list directly (used for range downloads). */
@@ -731,6 +738,46 @@ export class M3U8Downloader {
       return AbortSignal.any([this._abortController.signal, timeout]);
     }
     return timeout;
+  }
+
+  /**
+   * Download a separate audio-only HLS track and save it alongside the main video.
+   * Failures are non-fatal: logged as warnings so the main video is not affected.
+   */
+  private async _downloadAudioTrack(audioUrl: string, filename: string): Promise<void> {
+    try {
+      this.onStatus(this.msgs.audioTrackDownloading, 'info');
+      const text = await this.retry(() => this.fetchText(audioUrl));
+      const pl = M3U8Parser.parse(text, audioUrl);
+      if (pl.type !== 'media' || pl.segments.length === 0) return;
+
+      const segs = pl.segments;
+      const buffers: Array<ArrayBuffer | null> = new Array(segs.length).fill(null);
+
+      await this.pool(segs.length, async (i) => {
+        if (this._aborted) throw new Error(ABORT_MSG);
+        try {
+          buffers[i] = await this.downloadSegment(segs[i]);
+        } catch (e) {
+          if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) throw e;
+          // Individual audio segment failures are skipped; output may be gappy but usable.
+        }
+      });
+
+      const valid = buffers.filter((b): b is ArrayBuffer => b !== null);
+      if (valid.length === 0) return;
+
+      const parts: Blob[] = [];
+      for (let i = 0; i < valid.length; i += MERGE_BATCH) {
+        parts.push(new Blob(valid.slice(i, i + MERGE_BATCH)));
+      }
+      const blob = new Blob(parts, { type: 'video/mp2t' });
+      await this.saveBlob(blob, `${filename}_audio.ts`);
+      this.onStatus(this.msgs.audioTrackDone, 'ok');
+    } catch (e) {
+      if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) return;
+      this.onStatus(this.msgs.audioTrackFailed((e as Error)?.message ?? String(e)), 'warn');
+    }
   }
 
   async saveBlob(blob: Blob, filename: string): Promise<void> {

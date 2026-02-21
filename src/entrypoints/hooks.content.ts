@@ -20,11 +20,11 @@ export default defineContentScript({
 
     // ── Hook XHR ──────────────────────────────────────────────────
     const NativeXHR = window.XMLHttpRequest;
-    // @ts-ignore – intentionally patching native class
+    // @ts-expect-error – intentionally patching native class
     class PatchedXHR extends NativeXHR {
       open(method: string, url: string, ...rest: unknown[]) {
         if (url) dispatch(String(url));
-        // @ts-ignore
+        // @ts-expect-error – variadic args on overloaded super.open
         return super.open(method, url, ...rest);
       }
     }

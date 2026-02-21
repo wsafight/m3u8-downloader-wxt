@@ -47,6 +47,11 @@ function addStream(tabId: number, url: string) {
   });
 }
 
+/** Runtime type guard — rejects messages from untrusted or malformed senders. */
+function isAppMessage(msg: unknown): msg is AppMessage {
+  return typeof msg === 'object' && msg !== null && 'type' in msg && typeof (msg as Record<string, unknown>).type === 'string';
+}
+
 function updateBadge(tabId: number) {
   const n = store.get(tabId)?.size ?? 0;
   chrome.action.setBadgeText({ text: n > 0 ? String(n) : '', tabId });
@@ -77,7 +82,8 @@ export default defineBackground(() => {
 
   // ── Message handling ─────────────────────────────────────────
   chrome.runtime.onMessage.addListener((rawMsg, sender, respond) => {
-    const msg = rawMsg as AppMessage;
+    if (!isAppMessage(rawMsg)) return;
+    const msg = rawMsg;
 
     switch (msg.type) {
       case MSG.M3U8_DETECTED: {

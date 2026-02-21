@@ -160,6 +160,9 @@ const zh = {
   dlHttpGeneric: ZH_DL.httpGeneric,
   dlAes128MissingKey: ZH_DL.aes128MissingKey,
   dlCircuitOpen: ZH_DL.circuitOpen,
+  dlAudioTrackDownloading: ZH_DL.audioTrackDownloading,
+  dlAudioTrackDone: ZH_DL.audioTrackDone,
+  dlAudioTrackFailed: ZH_DL.audioTrackFailed,
 
   // ── LiveRecorder messages (sourced from zh-messages.ts) ─────────
   lrStartRecording: ZH_LR.startRecording,
@@ -350,6 +353,9 @@ const en = {
   dlHttpGeneric: (status: number, url: string) => `HTTP ${status} (${url})`,
   dlAes128MissingKey: 'AES-128 encrypted but key URI is missing',
   dlCircuitOpen: (n: number) => `${n} consecutive segment failures — aborting to prevent wasted retries`,
+  dlAudioTrackDownloading: 'Downloading separate audio track…',
+  dlAudioTrackDone: 'Audio track downloaded',
+  dlAudioTrackFailed: (msg: string) => `Audio track download failed: ${msg}`,
 
   // ── LiveRecorder messages ────────────────────────────────────────
   lrStartRecording: 'Starting live stream recording…',

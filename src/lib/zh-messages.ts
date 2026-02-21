@@ -46,6 +46,9 @@ export const ZH_DL = {
   aes128MissingKey: 'AES-128 加密但缺少密钥 URI',
   circuitOpen: (n: number) =>
     `连续 ${n} 个分片失败，已自动中止下载以防止无效重试`,
+  audioTrackDownloading: '正在下载独立音频轨道…',
+  audioTrackDone: '音频轨道下载完成',
+  audioTrackFailed: (msg: string) => `音频轨道下载失败：${msg}`,
 } as const;
 
 export const ZH_LR = {

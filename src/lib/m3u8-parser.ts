@@ -11,6 +11,9 @@ import type {
 } from './types';
 
 export class M3U8Parser {
+  /** Hard cap on parsed segments to prevent OOM from pathological playlists. */
+  private static readonly MAX_SEGMENTS = 50_000;
+
   static parse(text: string, baseUrl: string, subtitleTracks?: MediaTrack[]): Playlist {
     const lines = text
       .split('\n')
@@ -105,6 +108,9 @@ export class M3U8Parser {
         const [lenStr, offStr] = val.split('@');
         pendingByteRange = { length: parseInt(lenStr), rawOffset: offStr };
       } else if (!line.startsWith('#') && segDuration > 0) {
+        if (segments.length >= M3U8Parser.MAX_SEGMENTS) {
+          throw new Error(`播放列表超出最大分片限制（${M3U8Parser.MAX_SEGMENTS}）`);
+        }
         const url = this.resolve(line, baseUrl);
         let byteRange: ByteRange | undefined;
         if (pendingByteRange) {
