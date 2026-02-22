@@ -1,7 +1,7 @@
 import { M3U8Parser } from './m3u8-parser';
 import type { Segment } from './types';
 import { M3U8Downloader } from './downloader';
-import { aesDecrypt, importAesKey, seqToIV } from './crypto-utils';
+import { aesDecrypt, resolveAesKey, seqToIV } from './crypto-utils';
 import { ZH_RECORDER_MESSAGES } from './default-messages';
 
 /** All user-visible status messages emitted by the live recorder.
@@ -257,23 +257,24 @@ export class LiveRecorder {
   private async _decryptAES128(data: ArrayBuffer, seg: Segment): Promise<ArrayBuffer> {
     const { uri, iv } = seg.encryption!;
     if (!uri) throw new Error(this.msgs.aes128MissingKey);
-    let key = this._keyCache.get(uri);
-    if (!key) {
-      let lastStatus = 0;
-      for (let attempt = 0; attempt < this.retries; attempt++) {
-        const res = await fetch(uri, { credentials: 'include', signal: AbortSignal.timeout(this.fetchTimeout) });
-        if (res.ok) {
-          key = await importAesKey(new Uint8Array(await res.arrayBuffer()));
-          this._keyCache.set(uri, key);
-          break;
-        }
-        lastStatus = res.status;
-        if (attempt < this.retries - 1)
-          await this._wait(Math.min(800 * Math.pow(2, attempt), 5_000));
-      }
-      if (!key) throw new Error(this.msgs.keyFetchFailed(lastStatus));
-    }
+    const key = await resolveAesKey(uri, this._keyCache, (u) => this._fetchKeyBytes(u));
     return aesDecrypt(data, key, iv ?? seqToIV(seg.sequence));
+  }
+
+  /** Fetch raw AES key bytes with simple retry and HTTP-status error reporting. */
+  private async _fetchKeyBytes(uri: string): Promise<ArrayBuffer> {
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < this.retries; attempt++) {
+      const res = await fetch(uri, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(this.fetchTimeout),
+      });
+      if (res.ok) return res.arrayBuffer();
+      lastStatus = res.status;
+      if (attempt < this.retries - 1)
+        await this._wait(Math.min(800 * Math.pow(2, attempt), 5_000));
+    }
+    throw new Error(this.msgs.keyFetchFailed(lastStatus));
   }
 
   private _wait(ms: number): Promise<void> {

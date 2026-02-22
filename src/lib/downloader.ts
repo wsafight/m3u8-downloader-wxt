@@ -7,11 +7,19 @@ import {
   clearCachedSegments,
   loadCachedSegments,
 } from './segment-cache';
-import { aesDecrypt, importAesKey, seqToIV } from './crypto-utils';
+import { aesDecrypt, resolveAesKey, seqToIV } from './crypto-utils';
 import { ZH_DOWNLOADER_MESSAGES } from './default-messages';
 import type { ByteRange, DownloadCheckpoint, DownloadPhase, InitSegment, Segment, SegmentStatus, StreamDef } from './types';
 
-/** Internal sentinel used to signal a user-initiated abort across async boundaries. */
+/** Thrown when the user aborts a download. Prefer `instanceof DownloadAbortError` over string comparison. */
+export class DownloadAbortError extends Error {
+  constructor() {
+    super('download aborted by user');
+    this.name = 'DownloadAbortError';
+  }
+}
+
+/** @deprecated Use `DownloadAbortError` instead. */
 export const ABORT_MSG = '__M3U8DL_ABORTED__';
 
 /** All user-visible status messages emitted by the downloader.
@@ -346,7 +354,7 @@ export class M3U8Downloader {
     await this.pool(total, async (i) => {
       // Skip segments already restored from cache
       if (this._segStatuses[i] === 'ok') return;
-      if (this._aborted) throw new Error(ABORT_MSG);
+      if (this._aborted) throw new DownloadAbortError();
       try {
         this._buffers[i] = await this.downloadSegment(segments[i]);
         this._segStatuses[i] = 'ok';
@@ -360,8 +368,8 @@ export class M3U8Downloader {
         this._consecutiveFailures = 0; // reset on success
       } catch (e) {
         // Re-throw abort; swallow other errors and mark segment failed
-        if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) {
-          throw new Error(ABORT_MSG);
+        if (this._aborted || e instanceof DownloadAbortError) {
+          throw new DownloadAbortError();
         }
         this._segStatuses[i] = 'failed';
         this.onSegmentStatus?.(i, 'failed');
@@ -375,12 +383,12 @@ export class M3U8Downloader {
         ) {
           this.onStatus(this.msgs.circuitOpen(this._consecutiveFailures), 'error');
           this.abort();
-          throw new Error(ABORT_MSG);
+          throw new DownloadAbortError();
         }
       }
     });
 
-    if (this._aborted) throw new Error(ABORT_MSG);
+    if (this._aborted) throw new DownloadAbortError();
 
     // ── Check for failures ─────────────────────────────────────────
     const failedCount = this._segStatuses.filter((s) => s === 'failed').length;
@@ -424,7 +432,7 @@ export class M3U8Downloader {
 
     // Reuse pool() — iterate over positions in failedIdx, not over all segments
     await this.pool(failedIdx.length, async (pos) => {
-      if (this._aborted) throw new Error(ABORT_MSG);
+      if (this._aborted) throw new DownloadAbortError();
       const i = failedIdx[pos];
       try {
         this._buffers[i] = await this.downloadSegment(this._pendingSegments[i]);
@@ -442,8 +450,8 @@ export class M3U8Downloader {
         );
         this.onSegmentStatus?.(i, 'ok');
       } catch (e) {
-        if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) {
-          throw new Error(ABORT_MSG);
+        if (this._aborted || e instanceof DownloadAbortError) {
+          throw new DownloadAbortError();
         }
         this._segStatuses[i] = 'failed';
         this.onSegmentStatus?.(i, 'failed');
@@ -451,7 +459,7 @@ export class M3U8Downloader {
       }
     });
 
-    if (this._aborted) throw new Error(ABORT_MSG);
+    if (this._aborted) throw new DownloadAbortError();
 
     const stillFailed = this._segStatuses.filter((s) => s === 'failed').length;
     if (stillFailed > 0) {
@@ -565,12 +573,9 @@ export class M3U8Downloader {
   private async decryptAES128(data: ArrayBuffer, seg: Segment): Promise<ArrayBuffer> {
     const { uri, iv } = seg.encryption!;
     if (!uri) throw new Error(this.msgs.aes128MissingKey);
-    let key = this._keyCache.get(uri);
-    if (!key) {
-      const keyBytes = new Uint8Array(await this.retry(() => this.fetchBinary(uri)));
-      key = await importAesKey(keyBytes);
-      this._keyCache.set(uri, key);
-    }
+    const key = await resolveAesKey(uri, this._keyCache, (u) =>
+      this.retry(() => this.fetchBinary(u)),
+    );
     return aesDecrypt(data, key, iv ?? seqToIV(seg.sequence));
   }
 
@@ -601,11 +606,11 @@ export class M3U8Downloader {
   private async retry<T>(fn: () => Promise<T>): Promise<T> {
     let lastErr: unknown;
     for (let i = 0; i < this.retries; i++) {
-      if (this._aborted) throw new Error(ABORT_MSG);
+      if (this._aborted) throw new DownloadAbortError();
       try {
         return await fn();
       } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') throw new Error(ABORT_MSG);
+        if (e instanceof DOMException && e.name === 'AbortError') throw new DownloadAbortError();
         // Permanent errors (403, 404) will never succeed — rethrow immediately.
         if (e instanceof HttpError && e.permanent) throw e;
         lastErr = e;
@@ -628,7 +633,7 @@ export class M3U8Downloader {
     try {
       res = await fetch(url, { credentials: 'include', signal: this._fetchSignal() });
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw new Error(ABORT_MSG);
+      if (e instanceof DOMException && e.name === 'AbortError') throw new DownloadAbortError();
       throw new Error(this.msgs.networkError(this.shortUrl(url)));
     }
     if (!res.ok) throw this.classifyHttpError(res, url);
@@ -647,7 +652,7 @@ export class M3U8Downloader {
         signal: this._fetchSignal(),
       });
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw new Error(ABORT_MSG);
+      if (e instanceof DOMException && e.name === 'AbortError') throw new DownloadAbortError();
       throw new Error(this.msgs.networkError(this.shortUrl(url)));
     }
     if (!res.ok && res.status !== 206) throw this.classifyHttpError(res, url);
@@ -755,11 +760,11 @@ export class M3U8Downloader {
       const buffers: Array<ArrayBuffer | null> = new Array(segs.length).fill(null);
 
       await this.pool(segs.length, async (i) => {
-        if (this._aborted) throw new Error(ABORT_MSG);
+        if (this._aborted) throw new DownloadAbortError();
         try {
           buffers[i] = await this.downloadSegment(segs[i]);
         } catch (e) {
-          if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) throw e;
+          if (this._aborted || e instanceof DownloadAbortError) throw e;
           // Individual audio segment failures are skipped; output may be gappy but usable.
         }
       });
@@ -775,7 +780,7 @@ export class M3U8Downloader {
       await this.saveBlob(blob, `${filename}_audio.ts`);
       this.onStatus(this.msgs.audioTrackDone, 'ok');
     } catch (e) {
-      if (this._aborted || (e instanceof Error && e.message === ABORT_MSG)) return;
+      if (this._aborted || e instanceof DownloadAbortError) return;
       this.onStatus(this.msgs.audioTrackFailed((e as Error)?.message ?? String(e)), 'warn');
     }
   }

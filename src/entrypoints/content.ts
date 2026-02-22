@@ -4,6 +4,7 @@
  * from DOM <video>/<source> elements to the background service worker.
  */
 import { MSG } from '../lib/messages';
+import { isStreamUrl } from '../lib/utils';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -11,12 +12,9 @@ export default defineContentScript({
   allFrames: true,
 
   main() {
+    /** Cap to prevent unbounded growth in long-lived SPA sessions. */
+    const MAX_REPORTED = 500;
     const reported = new Set<string>();
-
-    function isStreamUrl(url: string): boolean {
-      const lower = url.toLowerCase();
-      return lower.includes('.m3u8') || lower.includes('.mpd');
-    }
 
     function report(raw: string) {
       let url: string;
@@ -26,6 +24,10 @@ export default defineContentScript({
         return;
       }
       if (reported.has(url) || !isStreamUrl(url)) return;
+      // Evict the oldest entry when the cap is reached (Set preserves insertion order).
+      if (reported.size >= MAX_REPORTED) {
+        reported.delete(reported.values().next().value!);
+      }
       reported.add(url);
       chrome.runtime.sendMessage({ type: MSG.M3U8_DETECTED, url }).catch(() => {});
     }

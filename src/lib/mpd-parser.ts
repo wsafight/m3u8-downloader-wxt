@@ -146,8 +146,10 @@ export class MpdParser {
   ): Representation | null {
     const id = rep.getAttribute('id') ?? '';
     const bandwidth = parseInt(rep.getAttribute('bandwidth') ?? '0') || 0;
-    const width = parseInt(rep.getAttribute('width') ?? '0') || undefined;
-    const height = parseInt(rep.getAttribute('height') ?? '0') || undefined;
+    const widthAttr = rep.getAttribute('width');
+    const heightAttr = rep.getAttribute('height');
+    const width = widthAttr !== null ? (parseInt(widthAttr) || undefined) : undefined;
+    const height = heightAttr !== null ? (parseInt(heightAttr) || undefined) : undefined;
     const codecs =
       rep.getAttribute('codecs') ?? adaptSet.getAttribute('codecs') ?? undefined;
 

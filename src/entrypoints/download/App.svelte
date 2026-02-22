@@ -2,12 +2,11 @@
   import { onMount } from 'svelte';
   import { M3U8Parser } from '../../lib/m3u8-parser';
   import { MpdParser } from '../../lib/mpd-parser';
-  import { M3U8Downloader, PartialDownloadError } from '../../lib/downloader';
+  import { M3U8Downloader, PartialDownloadError, DownloadAbortError } from '../../lib/downloader';
   import { LiveRecorder } from '../../lib/live-recorder';
   import { loadSettings, saveSettings } from '../../lib/settings';
   import type { Lang } from '../../lib/i18n.svelte';
   import { i18n } from '../../lib/i18n.svelte';
-  import { ABORT_MSG } from '../../lib/downloader';
   import type { DownloaderMessages } from '../../lib/downloader';
   import type { LiveRecorderMessages } from '../../lib/live-recorder';
   import { addHistoryEntry } from '../../lib/history';
@@ -343,8 +342,7 @@
             .catch(() => {});
         return;
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === ABORT_MSG) {
+      if (e instanceof DownloadAbortError) {
         phase = 'aborted';
         addLog(i18n.t('appDownloadAborted'), 'error');
         await saveHistory('aborted');
@@ -354,10 +352,11 @@
               type: MSG.QUEUE_ITEM_DONE,
               queueId,
               status: 'error',
-              errorMsg: ABORT_MSG,
+              errorMsg: e.message,
             })
             .catch(() => {});
       } else {
+        const msg = e instanceof Error ? e.message : String(e);
         phase = 'error';
         errorMsg = msg;
         addLog(i18n.t('appDownloadFailed', msg), 'error');
@@ -388,11 +387,11 @@
         addLog(i18n.t('dlStillFailed', e.failedCount), 'error');
         return;
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === ABORT_MSG) {
+      if (e instanceof DownloadAbortError) {
         phase = 'aborted';
         addLog(i18n.t('appRetryAborted'), 'error');
       } else {
+        const msg = e instanceof Error ? e.message : String(e);
         phase = 'error';
         errorMsg = msg;
         addLog(i18n.t('appRetryFailed', msg), 'error');

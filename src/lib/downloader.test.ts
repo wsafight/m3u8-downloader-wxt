@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test';
-import { M3U8Downloader, PartialDownloadError, ABORT_MSG } from './downloader';
+import { M3U8Downloader, PartialDownloadError, DownloadAbortError } from './downloader';
 import { ZH_DOWNLOADER_MESSAGES } from './default-messages';
 import type { Segment } from './types';
 
@@ -273,7 +273,7 @@ describe('abort()', () => {
     await Promise.resolve();
     dl.abort();
 
-    await expect(promise).rejects.toThrow(ABORT_MSG);
+    await expect(promise).rejects.toBeInstanceOf(DownloadAbortError);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { AppMessage, StreamInfo } from '../lib/types';
 import { claimNextPending, updateQueueItem } from '../lib/queue';
 import { MSG } from '../lib/messages';
+import { isStreamUrl } from '../lib/utils';
 
 // tabId -> Map<url, StreamInfo>
 const store = new Map<number, Map<string, StreamInfo>>();
@@ -8,16 +9,6 @@ const store = new Map<number, Map<string, StreamInfo>>();
 /** Maximum number of stream URLs tracked per tab. Oldest entries are evicted first. */
 const MAX_STREAMS_PER_TAB = 50;
 
-// Check pathname AND query string so URLs like ?file=video.m3u8 are not missed
-function isStreamUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const combined = (u.pathname + u.search).toLowerCase();
-    return combined.includes('.m3u8') || combined.includes('.mpd');
-  } catch {
-    return false;
-  }
-}
 
 function isStreamContentType(headers?: chrome.webRequest.HttpHeader[]): boolean {
   const ct =

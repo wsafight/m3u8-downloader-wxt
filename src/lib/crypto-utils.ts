@@ -37,3 +37,25 @@ export function aesDecrypt(
 ): Promise<ArrayBuffer> {
   return crypto.subtle.decrypt({ name: 'AES-CBC', iv }, key, data);
 }
+
+/**
+ * Resolve an AES-128 CryptoKey from a URI, using the provided cache.
+ * If the key is not cached, `fetchBinary` is called to download the raw bytes.
+ *
+ * @param uri        - URL of the AES key resource.
+ * @param keyCache   - Per-downloader map of URI → imported CryptoKey.
+ * @param fetchBinary - Caller-provided function that fetches raw bytes (handles auth & retries).
+ */
+export async function resolveAesKey(
+  uri: string,
+  keyCache: Map<string, CryptoKey>,
+  fetchBinary: (url: string) => Promise<ArrayBuffer>,
+): Promise<CryptoKey> {
+  let key = keyCache.get(uri);
+  if (!key) {
+    const keyBytes = new Uint8Array(await fetchBinary(uri));
+    key = await importAesKey(keyBytes);
+    keyCache.set(uri, key);
+  }
+  return key;
+}

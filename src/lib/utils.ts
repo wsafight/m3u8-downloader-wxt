@@ -1,5 +1,22 @@
 /** Shared utility functions used across download and popup pages. */
 
+/**
+ * Returns true if the URL looks like an HLS (.m3u8) or DASH (.mpd) stream.
+ * Parses the URL so pathname and query string are both checked, catching
+ * cases like `?file=video.m3u8`.  Falls back to a plain string check on
+ * parse failure so relative URLs from content scripts also work.
+ */
+export function isStreamUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const combined = (u.pathname + u.search).toLowerCase();
+    return combined.includes('.m3u8') || combined.includes('.mpd');
+  } catch {
+    const lower = url.toLowerCase();
+    return lower.includes('.m3u8') || lower.includes('.mpd');
+  }
+}
+
 // Heuristic: path segments that look like tokens/UUIDs/hashes add no naming value.
 // Matches: UUIDs, hex strings ≥16 chars, base64-ish strings ≥32 chars, JWT parts.
 const TOKEN_RE = /^[0-9a-f]{16,}$/i;

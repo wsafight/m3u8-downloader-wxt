@@ -162,10 +162,12 @@ export class M3U8Parser {
   private static parseIV(ivStr: string): Uint8Array {
     const raw = ivStr.replace(/^0[xX]/, '');
     if (raw.length > 32) {
-      console.warn(`[M3U8Parser] IV 值异常（${raw.length} 字符，期望 ≤32），将取末尾 32 字符`);
+      throw new Error(
+        `[M3U8Parser] IV 值无效：长度 ${raw.length} 字符（期望最多 32 字符），原始值：${ivStr}`,
+      );
     }
-    // padStart handles short values; slice(-32) truncates oversized ones
-    const hex = raw.padStart(32, '0').slice(-32);
+    // padStart handles short values (< 32 hex chars)
+    const hex = raw.padStart(32, '0');
     const iv = new Uint8Array(16);
     for (let i = 0; i < 16; i++) iv[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
     return iv;
@@ -185,6 +187,7 @@ export class M3U8Parser {
     try {
       return new URL(url, base).href;
     } catch {
+      console.warn(`[M3U8Parser] URL 解析失败: "${url}"（base: "${base}"）`);
       return url;
     }
   }
